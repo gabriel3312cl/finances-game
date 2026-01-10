@@ -9,53 +9,66 @@ import (
 )
 
 func main() {
+	// Open database/init.sql for appending
+	f, err := os.OpenFile("database/init.sql", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Error opening init.sql: %v\n", err)
+		return
+	}
+	defer f.Close()
+
+	// Redirect stdout to the file? Or just Fprintf
+	// Easier to just use Fprintf
+
 	// 1. Community Chest
-	fmt.Println("-- Community Chest Cards")
-	fmt.Println("CREATE TABLE IF NOT EXISTS community_chest_cards (")
-	fmt.Println("    id SERIAL PRIMARY KEY,")
-	fmt.Println("    title VARCHAR(255),")
-	fmt.Println("    description TEXT,")
-	fmt.Println("    action TEXT")
-	fmt.Println(");")
-	fmt.Println("TRUNCATE community_chest_cards RESTART IDENTITY;")
-	parseCards("bases/tarjetas arca comunal.txt", "community_chest_cards")
+	fmt.Fprintf(f, "\n\n-- Community Chest Cards\n")
+	fmt.Fprintf(f, "CREATE TABLE IF NOT EXISTS community_chest_cards (\n")
+	fmt.Fprintf(f, "    id SERIAL PRIMARY KEY,\n")
+	fmt.Fprintf(f, "    title VARCHAR(255),\n")
+	fmt.Fprintf(f, "    description TEXT,\n")
+	fmt.Fprintf(f, "    action TEXT\n")
+	fmt.Fprintf(f, ");\n")
+	fmt.Fprintf(f, "TRUNCATE community_chest_cards RESTART IDENTITY;\n")
+	parseCards(f, "bases/tarjetas arca comunal.txt", "community_chest_cards")
 
 	// 2. Chance Cards
-	fmt.Println("\n-- Chance Cards")
-	fmt.Println("CREATE TABLE IF NOT EXISTS chance_cards (")
-	fmt.Println("    id SERIAL PRIMARY KEY,")
-	fmt.Println("    title VARCHAR(255),")
-	fmt.Println("    description TEXT,")
-	fmt.Println("    action TEXT")
-	fmt.Println(");")
-	fmt.Println("TRUNCATE chance_cards RESTART IDENTITY;")
-	parseCards("bases/tarjetas de fortuna.txt", "chance_cards")
+	fmt.Fprintf(f, "\n-- Chance Cards\n")
+	fmt.Fprintf(f, "CREATE TABLE IF NOT EXISTS chance_cards (\n")
+	fmt.Fprintf(f, "    id SERIAL PRIMARY KEY,\n")
+	fmt.Fprintf(f, "    title VARCHAR(255),\n")
+	fmt.Fprintf(f, "    description TEXT,\n")
+	fmt.Fprintf(f, "    action TEXT\n")
+	fmt.Fprintf(f, ");\n")
+	fmt.Fprintf(f, "TRUNCATE chance_cards RESTART IDENTITY;\n")
+	parseCards(f, "bases/tarjetas de fortuna.txt", "chance_cards")
 
 	// 3. Properties
-	fmt.Println("\n-- Properties")
-	fmt.Println("CREATE TABLE IF NOT EXISTS properties (")
-	fmt.Println("    id TEXT PRIMARY KEY,") // e.g. '1.1.1'
-	fmt.Println("    group_id VARCHAR(50),")
-	fmt.Println("    name VARCHAR(255),")
-	fmt.Println("    price INT,")
-	fmt.Println("    rent_base INT,")
-	fmt.Println("    rent_color_group INT,")
-	fmt.Println("    rent_1_house INT,")
-	fmt.Println("    rent_2_house INT,")
-	fmt.Println("    rent_3_house INT,")
-	fmt.Println("    rent_4_house INT,")
-	fmt.Println("    rent_hotel INT,")
-	fmt.Println("    house_cost INT,")
-	fmt.Println("    hotel_cost INT,")
-	fmt.Println("    mortgage_value INT,")
-	fmt.Println("    unmortgage_value INT,")
-	fmt.Println("    type VARCHAR(50) DEFAULT 'PROPERTY'")
-	fmt.Println(");")
-	fmt.Println("TRUNCATE properties;")
-	parseProperties("bases/titulos de pripiedad Chile.txt")
+	fmt.Fprintf(f, "\n-- Properties\n")
+	fmt.Fprintf(f, "CREATE TABLE IF NOT EXISTS properties (\n")
+	fmt.Fprintf(f, "    id TEXT PRIMARY KEY,\n") // e.g. '1.1.1'
+	fmt.Fprintf(f, "    group_id VARCHAR(50),\n")
+	fmt.Fprintf(f, "    name VARCHAR(255),\n")
+	fmt.Fprintf(f, "    price INT,\n")
+	fmt.Fprintf(f, "    rent_base INT,\n")
+	fmt.Fprintf(f, "    rent_color_group INT,\n")
+	fmt.Fprintf(f, "    rent_1_house INT,\n")
+	fmt.Fprintf(f, "    rent_2_house INT,\n")
+	fmt.Fprintf(f, "    rent_3_house INT,\n")
+	fmt.Fprintf(f, "    rent_4_house INT,\n")
+	fmt.Fprintf(f, "    rent_hotel INT,\n")
+	fmt.Fprintf(f, "    house_cost INT,\n")
+	fmt.Fprintf(f, "    hotel_cost INT,\n")
+	fmt.Fprintf(f, "    mortgage_value INT,\n")
+	fmt.Fprintf(f, "    unmortgage_value INT,\n")
+	fmt.Fprintf(f, "    type VARCHAR(50) DEFAULT 'PROPERTY'\n")
+	fmt.Fprintf(f, ");\n")
+	fmt.Fprintf(f, "TRUNCATE properties;\n")
+	parseProperties(f, "bases/titulos de pripiedad Chile.txt")
+
+	fmt.Println("Successfully appended data to database/init.sql")
 }
 
-func parseCards(filename string, tableName string) {
+func parseCards(w *os.File, filename string, tableName string) {
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("-- Error reading %s: %v\n", filename, err)
@@ -70,7 +83,7 @@ func parseCards(filename string, tableName string) {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			if title != "" {
-				fmt.Printf("INSERT INTO %s (title, description, action) VALUES ('%s', '%s', '%s');\n",
+				fmt.Fprintf(w, "INSERT INTO %s (title, description, action) VALUES ('%s', '%s', '%s');\n",
 					tableName, escape(title), escape(desc), escape(action))
 				title, desc, action = "", "", ""
 			}
@@ -87,12 +100,12 @@ func parseCards(filename string, tableName string) {
 	}
 	// Last one
 	if title != "" {
-		fmt.Printf("INSERT INTO %s (title, description, action) VALUES ('%s', '%s', '%s');\n",
+		fmt.Fprintf(w, "INSERT INTO %s (title, description, action) VALUES ('%s', '%s', '%s');\n",
 			tableName, escape(title), escape(desc), escape(action))
 	}
 }
 
-func parseProperties(filename string) {
+func parseProperties(w *os.File, filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("-- Error reading %s: %v\n", filename, err)
@@ -114,47 +127,27 @@ func parseProperties(filename string) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
-			// End of block? Not necessarily, blocks might be separated by newlines or headers.
-			// Let's assume blank line separates properties if we have an ID
 			if id, ok := currentProp["id"].(string); ok && id != "" {
-				printPropertyInsert(currentProp)
+				printPropertyInsert(w, currentProp)
 				currentProp = make(map[string]interface{})
 			}
 			continue
 		}
 
-		// Check for ID line: "1.1.1 Av. La Estrella"
-		// But headers like "1.1 grupo 1..." also match logic if not careful.
-		// Headers: 1.1, 1.2 ...
-		// Properties: 1.1.1, 2.1 ...
-
-		// If line starts with digit...
 		if matches := idRegex.FindStringSubmatch(line); matches != nil {
 			id := matches[1]
 			name := matches[3]
 
-			// Detect if it's a Header (Group) or Property
-			// Groups in file: "1.1 grupo 1..."
-			// Props: "1.1.1 Av..." or "2.1 Aeropuerto..."
-
-			// If it's a Group definition (e.g. 1.1), we might store it as context,
-			// but each property block seems self-contained or we need to inherit color.
-			// The file structure shows "1.1 grupo 1, Cerro Navia, azul"
-
 			if strings.Count(id, ".") == 1 && !strings.HasPrefix(name, "Aeropuerto") && !strings.HasPrefix(name, "Terminal") && !strings.HasPrefix(name, "Estación") {
-				// Likely a group header like "1.1 grupo 1..."
-				// Store group info if needed
 				continue
 			}
 
-			// If we had a previous property pending, verify if printed.
 			if _, ok := currentProp["id"]; ok {
-				printPropertyInsert(currentProp)
+				printPropertyInsert(w, currentProp)
 				currentProp = make(map[string]interface{})
 			}
 
 			currentProp["id"] = id
-			// Clean name (remove "grupo..." if it matched wrongly? No, regex shouldn't)
 			currentProp["name"] = name
 
 			// Type detection
@@ -173,7 +166,6 @@ func parseProperties(filename string) {
 			continue
 		}
 
-		// Parse attributes
 		if matches := valRegex.FindStringSubmatch(line); matches != nil {
 			currentProp["price"] = matches[1]
 		}
@@ -181,7 +173,6 @@ func parseProperties(filename string) {
 			currentProp["rent_base"] = matches[1]
 		}
 
-		// Heuristics for other fields
 		if strings.HasPrefix(line, "renta grupo color") {
 			currentProp["rent_color_group"] = extractInt(line)
 		}
@@ -213,9 +204,8 @@ func parseProperties(filename string) {
 			currentProp["unmortgage_value"] = extractInt(line)
 		}
 	}
-	// Flush last
 	if _, ok := currentProp["id"]; ok {
-		printPropertyInsert(currentProp)
+		printPropertyInsert(w, currentProp)
 	}
 }
 
@@ -228,8 +218,8 @@ func extractInt(s string) string {
 	return "0"
 }
 
-func printPropertyInsert(p map[string]interface{}) {
-	fmt.Printf("INSERT INTO properties (id, name, type, price, rent_base, rent_color_group, rent_1_house, rent_2_house, rent_3_house, rent_4_house, rent_hotel, house_cost, hotel_cost, mortgage_value, unmortgage_value) VALUES ('%v', '%v', '%v', %v, %v, %v, %v, %v, %v, %v, %v, %v, %v, %v, %v) ON CONFLICT(id) DO NOTHING;\n",
+func printPropertyInsert(w *os.File, p map[string]interface{}) {
+	fmt.Fprintf(w, "INSERT INTO properties (id, name, type, price, rent_base, rent_color_group, rent_1_house, rent_2_house, rent_3_house, rent_4_house, rent_hotel, house_cost, hotel_cost, mortgage_value, unmortgage_value) VALUES ('%v', '%v', '%v', %v, %v, %v, %v, %v, %v, %v, %v, %v, %v, %v, %v) ON CONFLICT(id) DO NOTHING;\n",
 		p["id"], escape(p["name"].(string)), p["type"],
 		valOr0(p, "price"), valOr0(p, "rent_base"), valOr0(p, "rent_color_group"),
 		valOr0(p, "rent_1_house"), valOr0(p, "rent_2_house"), valOr0(p, "rent_3_house"), valOr0(p, "rent_4_house"),
