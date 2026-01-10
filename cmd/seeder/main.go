@@ -9,10 +9,10 @@ import (
 )
 
 func main() {
-	// Open database/init.sql for appending
-	f, err := os.OpenFile("database/init.sql", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Open database/02_schema_and_data.sql for appending
+	f, err := os.OpenFile("database/02_schema_and_data.sql", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Printf("Error opening init.sql: %v\n", err)
+		fmt.Printf("Error opening 02_schema_and_data.sql: %v\n", err)
 		return
 	}
 	defer f.Close()
@@ -65,7 +65,7 @@ func main() {
 	fmt.Fprintf(f, "TRUNCATE properties;\n")
 	parseProperties(f, "bases/titulos de pripiedad Chile.txt")
 
-	fmt.Println("Successfully appended data to database/init.sql")
+	fmt.Println("Successfully appended data to database/02_schema_and_data.sql")
 }
 
 func parseCards(w *os.File, filename string, tableName string) {

@@ -1,36 +1,5 @@
--- Database Initialization Script
--- HOW TO RUN:
--- Option 1 (Command Line): psql -U postgres -f database/init.sql
--- Option 2 (GUI): 
---    1. Run the "Setup Database and User" section first.
---    2. Disconnect and Reconnect to the new 'finances_game' database.
---    3. Run the rest of the script.
---
--- Note: The '\c' command below only works in psql. If using a GUI, you must switch manually.
-
--- 1. Setup Database and User
-DO
-$do$
-BEGIN
-   IF NOT EXISTS (
-      SELECT FROM pg_catalog.pg_roles
-      WHERE  rolname = 'finances_user') THEN
-
-      CREATE ROLE finances_user WITH LOGIN PASSWORD 'secure_password_123';
-   END IF;
-END
-$do$;
-
--- Drop and recreate database (optional, for fresh start)
-DROP DATABASE IF EXISTS finances_game;
-CREATE DATABASE finances_game OWNER finances_user;
-
--- Gran permissions (Connect to specific DB)
-GRANT ALL PRIVILEGES ON DATABASE finances_game TO finances_user;
-
-\c finances_game finances_user;
-
 -- 2. Schema Definitions
+-- Run this script SECOND, ensuring you are connected to 'finances_game'
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -83,7 +52,7 @@ CREATE TABLE IF NOT EXISTS game_players (
 CREATE TABLE IF NOT EXISTS game_properties (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     game_id UUID REFERENCES games(id) ON DELETE CASCADE,
-    property_id VARCHAR(50) NOT NULL, -- ID from rules (e.g., 1.1.1) - CHANGED to VARCHAR to match '1.1.1'
+    property_id VARCHAR(50) NOT NULL, -- ID from rules (e.g., 1.1.1)
     owner_id UUID REFERENCES game_players(id) ON DELETE SET NULL, -- Player ID
     mortgaged BOOLEAN DEFAULT FALSE,
     houses INT DEFAULT 0,
