@@ -22,6 +22,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// GameActionHandler defines how to process incoming messages
+type GameActionHandler interface {
+	HandleAction(gameID string, userID string, message []byte)
+}
+
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
 	Hub *Hub
@@ -37,6 +42,9 @@ type Client struct {
 
 	// UserID of the player
 	UserID string
+
+	// Handler for actions
+	Handler GameActionHandler
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -56,13 +64,16 @@ func (c *Client) ReadPump() {
 			}
 			break
 		}
-		// Route message to Hub logic (can parse JSON here and call service)
-		// For now, just broadcast to the game room
-		// struct { Action string, Payload ... }
-		c.Hub.Broadcast <- &BroadcastMessage{
-			GameID:  c.GameID,
-			Payload: message,
-			Sender:  c,
+		// Route message to Logic Handler
+		if c.Handler != nil {
+			c.Handler.HandleAction(c.GameID, c.UserID, message)
+		} else {
+			// Fallback: just broadcast (echo)
+			c.Hub.Broadcast <- &BroadcastMessage{
+				GameID:  c.GameID,
+				Payload: message,
+				Sender:  c,
+			}
 		}
 	}
 }

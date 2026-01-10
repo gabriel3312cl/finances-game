@@ -5,10 +5,9 @@ import (
 	"net/http"
 )
 
-// GameService interface wrapper to avoid circular dependency if we import service package here.
-// But better to define an Interface here or pass a specific method.
+// GameServiceManager matches the GameActionHandler interface
 type GameServiceManager interface {
-	// Methods if needed
+	HandleAction(gameID string, userID string, message []byte)
 }
 
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, gameService GameServiceManager) {
@@ -27,11 +26,12 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, gameService GameS
 	}
 
 	client := &Client{
-		Hub:    hub,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
-		GameID: gameID,
-		UserID: userID,
+		Hub:     hub,
+		Conn:    conn,
+		Send:    make(chan []byte, 256),
+		GameID:  gameID,
+		UserID:  userID,
+		Handler: gameService,
 	}
 
 	client.Hub.Register <- client
