@@ -114,3 +114,6 @@ CREATE TABLE IF NOT EXISTS loans (
 CREATE INDEX idx_games_code ON games(code);
 CREATE INDEX idx_game_players_game_id ON game_players(game_id);
 CREATE INDEX idx_game_history_game_id ON game_history(game_id);
+
+-- Default Data
+INSERT INTO valid_codes (code, description) VALUES ('BETA123', 'Default beta access code') ON CONFLICT DO NOTHING;
