@@ -8,6 +8,7 @@ type GameState struct {
 	Status        string         `json:"status"`          // WAITING, PLAYING, ENDED
 	Dice          [2]int         `json:"dice"`
 	LastAction    string         `json:"last_action"` // Log description
+	ActiveAuction *AuctionState  `json:"active_auction,omitempty"`
 }
 
 type PlayerState struct {

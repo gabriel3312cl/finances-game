@@ -5,6 +5,9 @@ import BoardTile from './BoardTile';
 import { useGame } from '@/context/GameContext';
 import PlayerToken from './PlayerToken';
 
+import Link from 'next/link';
+import AuctionModal from './AuctionModal';
+
 export default function GameBoard() {
     const { gameState, sendMessage, user } = useGame();
 
@@ -104,18 +107,31 @@ export default function GameBoard() {
 
                             {/* Controls */}
                             {isMyTurn && (
-                                <button
-                                    onClick={handleRollDice}
-                                    className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold rounded-full shadow-lg shadow-green-500/30 transform hover:scale-105 transition-all text-xl"
-                                >
-                                    ROLL DICE
-                                </button>
+                                <div className="space-y-4">
+                                    <button
+                                        onClick={handleRollDice}
+                                        className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold rounded-full shadow-lg shadow-green-500/30 transform hover:scale-105 transition-all text-xl block w-full"
+                                    >
+                                        ROLL DICE
+                                    </button>
+
+                                    {/* Test Auction Button (Dev only) */}
+                                    <button
+                                        onClick={() => sendMessage('START_AUCTION', { property_id: 'TEST_PROP' })}
+                                        className="text-xs text-gray-500 underline hover:text-white"
+                                    >
+                                        [Dev] Start Auction
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
 
                 </div>
             </div>
+
+            {/* Global Modals */}
+            <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
         </div>
     );
 }
