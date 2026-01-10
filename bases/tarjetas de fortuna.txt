@@ -1,0 +1,64 @@
+1-
+titulo: multa
+descripcion: multa por exceso de velocidad
+accion: paga 15m
+
+2-
+titulo: reparaciones generales
+descripcion: haz reparaciones generales en todas tus propiedades
+accion: por cada casa, paga 25m, por cada hotel, paga 100m
+
+3-
+titulo: avanza a (avenida aleatoria)
+descripcion: avanza a (avenida aleatoria), si pasas por la salida, cobra 200m
+accion: avanzar a avenida aleatoria, si pasa por la salida, cobra 200m
+
+4-
+titulo: avanza a un transporte
+descripcion: avanza hacia (transporte aleatorio), si no tiene dueño, puedes comprarlo al banco, si tiene dueño, paga el doble de la renta, si pasas por la salida, cobra 200m
+accion: avanzar a transporte aleatorio, si no tiene dueño comprarla, si tiene dueño, pagar el doble de renta, si pasa por la salida, cobra 200m
+
+5-
+titulo: pase gratis
+descripcion: sal de la carcel gratis, puedes intercambiar o vender esta tarjeta, o guardarla hasta que la necesites
+accion: salir de la carsel, se puede guardar en el inventario
+
+6-
+titulo: avanza hacia un servicio
+descripcion: avanza hasta el servicio publico mas cercano, si no tiene dueño, puedes comprarlo al banco, si tiene dueño, tira los dados y paga al dueño un total de diez veces la cantidad mostrada, si pasas por la salida, cobra 200m
+accion: avanzar al servicio mas cercano, si no tiene dueño comprarla, si tiene dueño,tira los dados y paga al dueño un total de diez veces la cantidad mostrada, si pasa por la salida, cobra 200m
+
+7-
+titulo: prestamo
+descripcion: por cumplimiento en el pago del prestamo de construccion, cobra 150m
+accion: cobrar 150m
+
+8-
+titulo: avanzar a la salida
+descripcion: avanza hasta la salida
+accion: cobra 500m
+
+9-
+titulo: presidente
+descripcion: has sido elegido presidente del consejo de administracion
+accion: paga a cada jugador 50m
+
+10-
+titulo: dividendos
+descripcion: el banco te paga un dividendo de 50m
+accion: cobra 50m
+
+11-
+titulo: retroceder
+descripcion: retrocede tres casillas
+accion: retrocede 3 casillas
+
+12-
+titulo: avanza hasta (la ultima casilla de propiedad)
+descripcion: avanza hasta (la ultima casilla de propiedad)
+accion: avanza hasta la ultima casilla de propiedad
+
+13-
+titulo: a la carcel
+descripcion: ve a la carcel, directamente, no pases por la salida ni cobres 200m
+accion: ve a la carcel

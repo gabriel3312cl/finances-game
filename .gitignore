@@ -1,0 +1,31 @@
+# General
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Backend (Go)
+/backend/bin/
+/backend/dist/
+/backend/vendor/
+/backend/.env
+/backend/*.exe
+/backend/*.test
+/backend/*.out
+
+# Frontend (Next.js)
+/frontend/node_modules/
+/frontend/.next/
+/frontend/build/
+/frontend/dist/
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+
+# Database
+/postgres_data/

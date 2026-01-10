@@ -1,0 +1,681 @@
+1 propiedades
+
+1.1 grupo 1, Cerro Navia, azul
+
+1.1.1 Av. La Estrella
+valor 60m
+renta 2m
+renta grupo color 4m
+renta con una casa 10m
+renta con 2 casas 30m
+renta con 3 casas 90m
+renta con 4 casas 160m
+renta con hotel 150m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 30m
+deshipoteca 33m
+
+1.1.2 Av. José Joaquín Pérez
+valor 60m
+renta 2m
+renta grupo color 4m
+renta con una casa 10m
+renta con 2 casas 30m
+renta con 3 casas 90m
+renta con 4 casas 160m
+renta con hotel 150m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 30m
+deshipoteca 33m
+
+1.1.3 Av. Mapocho
+valor 80m
+renta 4m
+renta grupo color 8m
+renta con una casa 20m
+renta con 2 casas 60m
+renta con 3 casas 180m
+renta con 4 casas 320m
+renta con hotel 450m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 40m
+deshipoteca 44m
+
+1.2 grupo 2, Maipú, blanco
+
+1.2.1 Av. Pajaritos
+valor 80m
+renta 4m
+renta grupo color 8m
+renta con una casa 20m
+renta con 2 casas 60m
+renta con 3 casas 180m
+renta con 4 casas 320m
+renta con hotel 450m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 60m
+deshipoteca 66m
+
+1.2.2 Camino a Rinconada
+valor 80m
+renta 4m
+renta grupo color 8m
+renta con una casa 20m
+renta con 2 casas 60m
+renta con 3 casas 180m
+renta con 4 casas 320m
+renta con hotel 450m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 50m
+deshipoteca 55m
+
+1.2.3 Camino a Melipilla
+valor 100m
+renta 8m
+renta grupo color 16m
+renta con una casa 40m
+renta con 2 casas 100m
+renta con 3 casas 300m
+renta con 4 casas 450m
+renta con hotel 600m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 50m
+deshipoteca 55m
+
+1.3 grupo 3, La Florida, rojo
+
+1.3.1 Av. La Florida
+valor 100m
+renta 6m
+renta grupo color 12m
+renta con una casa 30m
+renta con 2 casas 90m
+renta con 3 casas 270m
+renta con 4 casas 400m
+renta con hotel 550m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 50m
+deshipoteca 55m
+
+1.3.2 Av. Walker Martínez
+valor 100m
+renta 6m
+renta grupo color 12m
+renta con una casa 30m
+renta con 2 casas 90m
+renta con 3 casas 270m
+renta con 4 casas 400m
+renta con hotel 550m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 50m
+deshipoteca 55m
+
+1.3.3 Av. Trinidad
+valor 120m
+renta 8m
+renta grupo color 16m
+renta con una casa 40m
+renta con 2 casas 100m
+renta con 3 casas 300m
+renta con 4 casas 450m
+renta con hotel 600m
+casa cuesta 50m c/u
+hotel cuesta 50m
+hipoteca 60m
+deshipoteca 66m
+
+1.4 grupo 4, Puente Alto, naranjo
+
+1.4.1 Av. Concha y Toro
+valor 140m
+renta 10m
+renta grupo color 20m
+renta con una casa 50m
+renta con 2 casas 150m
+renta con 3 casas 450m
+renta con 4 casas 625m
+renta con hotel 750m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 70m
+deshipoteca 77m
+
+1.4.2 Av. Camilo Henríquez 
+valor 140m
+renta 10m
+renta grupo color 20m
+renta con una casa 50m
+renta con 2 casas 150m
+renta con 3 casas 450m
+renta con 4 casas 625m
+renta con hotel 750m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 70m
+deshipoteca 77m
+
+1.4.3 Av. Santa Rosa
+valor 160m
+renta 12m
+renta grupo color 24m
+renta con una casa 60m
+renta con 2 casas 180m
+renta con 3 casas 500m
+renta con 4 casas 700m
+renta con hotel 900m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 80m
+deshipoteca 88m
+
+1.5 grupo 5, Macul, celeste
+
+1.5.1 Av. Macul
+valor 140m
+renta 10m
+renta grupo color 20m
+renta con una casa 50m
+renta con 2 casas 150m
+renta con 3 casas 450m
+renta con 4 casas 625m
+renta con hotel 750m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 70m
+deshipoteca 77m
+
+1.5.2 Av. José Pedro Alessandri
+valor 140m
+renta 10m
+renta grupo color 20m
+renta con una casa 50m
+renta con 2 casas 150m
+renta con 3 casas 450m
+renta con 4 casas 625m
+renta con hotel 750m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 70m
+deshipoteca 77m
+
+1.5.3 Av. Quilin
+valor 160m
+renta 12m
+renta grupo color 24m
+renta con una casa 60m
+renta con 2 casas 180m
+renta con 3 casas 500m
+renta con 4 casas 700m
+renta con hotel 900m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 80m
+deshipoteca 88m
+
+1.6 grupo 6, Peñalolén, morado
+
+1.6.1 Av. Grecia
+valor 180m
+renta 14m
+renta grupo color 28m
+renta con una casa 70m
+renta con 2 casas 200m
+renta con 3 casas 550m
+renta con 4 casas 750m
+renta con hotel 950m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 90m
+deshipoteca 99m
+
+1.6.2 Av. Tobalaba
+valor 180m
+renta 14m
+renta grupo color 28m
+renta con una casa 70m
+renta con 2 casas 200m
+renta con 3 casas 550m
+renta con 4 casas 750m
+renta con hotel 950m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 90m
+deshipoteca 99m
+
+1.6.3 Av. Oriental
+valor 200m
+renta 16m
+renta grupo color 32m
+renta con una casa 80m
+renta con 2 casas 220m
+renta con 3 casas 600m
+renta con 4 casas 800m
+renta con hotel 1000m
+casa cuesta 100m c/u
+hotel cuesta 100m
+hipoteca 100m
+deshipoteca 110m
+
+1.7 grupo 7, Ñuñoa, amarillo
+
+1.7.1 Av. Irarrázaval
+valor 220m
+renta 18m
+renta grupo color 36m
+renta con una casa 90m
+renta con 2 casas 250m
+renta con 3 casas 700m
+renta con 4 casas 875m
+renta con hotel 1050m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 110m
+deshipoteca 121m
+
+1.7.2 Av. Simón Bolívar
+valor 220m
+renta 18m
+renta grupo color 36m
+renta con una casa 90m
+renta con 2 casas 250m
+renta con 3 casas 700m
+renta con 4 casas 875m
+renta con hotel 1050m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 110m
+deshipoteca 121m
+
+1.7.3 Av. Pedro de Valdivia
+valor 240m
+renta 20m
+renta grupo color 40m
+renta con una casa 100m
+renta con 2 casas 300m
+renta con 3 casas 750m
+renta con 4 casas 925m
+renta con hotel 1100m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 120m
+deshipoteca 132m
+
+1.8 grupo 8, La Reina, verde
+
+1.8.1 Av. José Arrieta
+valor 260m
+renta 22m
+renta grupo color 44m
+renta con una casa 110m
+renta con 2 casas 330m
+renta con 3 casas 800m
+renta con 4 casas 975m
+renta con hotel 1150m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 130m
+deshipoteca 143m
+
+1.8.2 Av. Ossa
+valor 260m
+renta 22m
+renta grupo color 44m
+renta con una casa 110m
+renta con 2 casas 330m
+renta con 3 casas 800m
+renta con 4 casas 975m
+renta con hotel 1150m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 130m
+deshipoteca 143m
+
+1.8.3 Av. Príncipe de Gales
+valor 280m
+renta 24m
+renta grupo color 48m
+renta con una casa 120m
+renta con 2 casas 360m
+renta con 3 casas 850m
+renta con 4 casas 1025m
+renta con hotel 1200m
+casa cuesta 150m c/u
+hotel cuesta 150m
+hipoteca 140m
+deshipoteca 154m
+
+1.9 grupo 9, Providencia, plata
+
+1.9.1 Av. Eliodoro Yáñez
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.9.2 Av. Salvador
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.9.3 Av. Manuel Montt
+valor 320m
+renta 28m
+renta grupo color 56m
+renta con una casa 150m
+renta con 2 casas 450m
+renta con 3 casas 1000m
+renta con 4 casas 1200m
+renta con hotel 1400m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 160m
+deshipoteca 176m
+
+1.10 grupo 10, Las Condes, gris
+
+1.10.1 Av. Apoquindo
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.10.2 Av. Kennedy 
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.10.3 Av. Tomás Moro
+valor 320m
+renta 28m
+renta grupo color 56m
+renta con una casa 150m
+renta con 2 casas 450m
+renta con 3 casas 1000m
+renta con 4 casas 1200m
+renta con hotel 1400m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 160m
+deshipoteca 176m
+
+1.11 grupo 11, Vitacura, cafe
+
+1.11.1 Av. Andrés Bello
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.11.2 Av. Tabancura
+valor 300m
+renta 26m
+renta grupo color 52m
+renta con una casa 130m
+renta con 2 casas 390m
+renta con 3 casas 900m
+renta con 4 casas 1100m
+renta con hotel 1275m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 150m
+deshipoteca 165m
+
+1.11.3 Av. Manquehue
+valor 320m
+renta 28m
+renta grupo color 56m
+renta con una casa 150m
+renta con 2 casas 450m
+renta con 3 casas 1000m
+renta con 4 casas 1200m
+renta con hotel 1400m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 160m
+deshipoteca 176m
+
+1.12 grupo 12, Lo Barnechea, negro
+
+1.12.1 Av. Los Trapenses
+valor 400m
+renta 50m
+renta grupo color 100m
+renta con una casa 200m
+renta con 2 casas 600m
+renta con 3 casas 1400m
+renta con 4 casas 1700m
+renta con hotel 2000m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 200m
+deshipoteca 220m
+
+1.12.2 Av. El Rodeo
+valor 400m
+renta 50m
+renta grupo color 100m
+renta con una casa 200m
+renta con 2 casas 600m
+renta con 3 casas 1400m
+renta con 4 casas 1700m
+renta con hotel 2000m
+casa cuesta 200m c/u
+hotel cuesta 200m
+hipoteca 200m
+deshipoteca 220m
+
+2 transportes
+
+2.1 Aeropuerto Arturo Merino Benítez
+valor 200m
+renta 25m
+si es dueño de 2 50m
+si es dueño de 3 100m
+si es dueño de 4 200m
+hipoteca 100m
+deshipoteca 110m
+
+2.2 Terminal Alameda
+valor 200m
+renta 25m
+si es dueño de 2 50m
+si es dueño de 3 100m
+si es dueño de 4 200m
+hipoteca 100m
+deshipoteca 110m
+
+2.3 Terminal Los Héroes
+valor 200m
+renta 25m
+si es dueño de 2 50m
+si es dueño de 3 100m
+si es dueño de 4 200m
+hipoteca 100m
+deshipoteca 110m
+
+2.4 Estación Central
+valor 200m
+renta 25m
+si es dueño de 2 50m
+si es dueño de 3 100m
+si es dueño de 4 200m
+hipoteca 100m
+deshipoteca 110m
+
+3 servicios
+
+3.1 Enel
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+valor 150m
+3.2 Aguas Andinas
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+3.3 WOM
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+3.4 Gasco
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+3.5 Metro de Santiago
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+3.6 Transantiago
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+si es dueño de 5 "servicios", la renta es 60 veces lo que muestren los dados
+si es dueño de 6 "servicios", la renta es 80 veces lo que muestren los dados
+hipoteca 75m
+deshipotecar 83m
+
+4 Atracciones
+
+4.1 Costanera Center
+valor 180m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+4.2 Movistar Arena
+valor 180m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+4.3 Estadio Nacional
+valor 180m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+4.4 Parque Arauco
+valor 180m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+5 Parques
+
+5.1 Parque Metropolitano
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+5.2 Cerro Santa Lucía
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+5.3 Parque Forestal
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
+
+5.4 Parque O'Higgins
+valor 150m
+si es dueño de 1 "servicio", la renta es 4 veces lo que muestren los dados
+si es dueño de 2 "servicios", la renta es 10 veces lo que muestren los dados
+si es dueño de 3 "servicios", la renta es 20 veces lo que muestren los dados
+si es dueño de 4 "servicios", la renta es 40 veces lo que muestren los dados
