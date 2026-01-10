@@ -8,6 +8,7 @@ import (
 	"os"
 
 	handler "github.com/gabriel3312cl/finances-game/backend/internal/handler/http"
+	"github.com/gabriel3312cl/finances-game/backend/internal/handler/websocket"
 	"github.com/gabriel3312cl/finances-game/backend/internal/repository/postgres"
 	"github.com/gabriel3312cl/finances-game/backend/internal/service"
 	"github.com/joho/godotenv"
@@ -39,9 +40,15 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	authService := service.NewAuthService(userRepo, jwtSecret)
 
-	// auth_handler.go package is 'handler', but imported from 'internal/handler/http'
-	// Go will assign the package name 'handler' to the import.
+	// Auth Handler
 	authHandler := handler.NewAuthHandler(authService)
+
+	// WebSocket Hub
+	hub := websocket.NewHub()
+	go hub.Run()
+
+	// Game Service (In-memory for now)
+	gameService := service.NewGameService(hub)
 
 	// Router
 	mux := http.NewServeMux()
@@ -54,6 +61,11 @@ func main() {
 	mux.HandleFunc("/login", authHandler.Login)
 	mux.HandleFunc("/me", handler.AuthMiddleware(authHandler.Me))
 	mux.HandleFunc("/delete-account", handler.AuthMiddleware(authHandler.Delete))
+
+	// WebSocket Route
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		websocket.ServeWs(hub, w, r, gameService)
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
