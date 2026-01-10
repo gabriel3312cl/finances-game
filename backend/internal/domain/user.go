@@ -2,15 +2,18 @@ package domain
 
 import "time"
 
+// Updating User struct to include SpecialCode field used in repo
 type User struct {
-	ID        string    `json:"id"`
-	Username  string    `json:"username"`
-	Password  string    `json:"-"` // Hash
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	Password    string    `json:"-"` // Hash
+	SpecialCode *string   `json:"-"` // Pointer to allow nulls if needed, though schema enforces FK
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type UserRepo interface {
 	Create(u *User) error
 	GetByUsername(username string) (*User, error)
-	Delete(id string) error // Must cascade delete games/players
+	ValidateSpecialCode(code string) (bool, error)
+	Delete(id string) error
 }
