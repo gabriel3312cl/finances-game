@@ -14,9 +14,25 @@ import { useState } from 'react';
 export default function GameBoard() {
     const { gameState, sendMessage, user } = useGame();
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+    const [showHeatmap, setShowHeatmap] = useState(false);
 
     const handleRollDice = () => {
         sendMessage('ROLL_DICE', {});
+    };
+
+    const getOwnerColor = (userId: string) => {
+        const owner = gameState?.players?.find((p: any) => p.user_id === userId);
+        const colorMap: Record<string, string> = {
+            'RED': '#ef4444',
+            'BLUE': '#3b82f6',
+            'GREEN': '#22c55e',
+            'YELLOW': '#eab308',
+            'PURPLE': '#a855f7',
+            'ORANGE': '#f97316',
+            'CYAN': '#06b6d4',
+            'PINK': '#ec4899',
+        };
+        return owner?.token_color ? colorMap[owner.token_color] : '#ffffff';
     };
 
     const isMyTurn = gameState?.current_turn_id === user?.user_id;
@@ -45,43 +61,31 @@ export default function GameBoard() {
                                 {/* Wait, BoardTile handles its own Grid placement style.
                                     We can just pass the children.
                                 */}
+                                {/* Ownership Indicator Overlay */}
+                                {tile.propertyId && gameState?.property_ownership?.[tile.propertyId] && (
+                                    <div
+                                        className="absolute inset-0 border-4 border-dashed z-10 pointer-events-none"
+                                        style={{ borderColor: getOwnerColor(gameState.property_ownership[tile.propertyId]) }}
+                                    />
+                                )}
+
+                                {/* Heatmap Overlay */}
+                                {showHeatmap && gameState?.tile_visits?.[i] && (
+                                    <div
+                                        className="absolute inset-0 z-20 pointer-events-none bg-red-600 transition-opacity duration-500"
+                                        style={{
+                                            opacity: Math.min(0.8, (gameState.tile_visits[i] || 0) * 0.1 + 0.1)
+                                            // Simple formula: base 0.1 + 0.1 per visit, max 0.8
+                                        }}
+                                    >
+                                        <div className="flex items-center justify-center h-full text-white font-bold text-xs drop-shadow-md">
+                                            {gameState.tile_visits[i]}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Tile Content */}
                                 <BoardTile tile={tile} index={i} />
-
-                                {/* Ownership Indicator */}
-                                {(() => {
-                                    if (!tile.propertyId || !gameState?.property_ownership) return null;
-                                    const ownerID = gameState.property_ownership[tile.propertyId];
-                                    if (ownerID) {
-                                        const owner = gameState.players.find((p: any) => p.user_id === ownerID);
-                                        const colorMap: Record<string, string> = {
-                                            'RED': 'border-red-500 bg-red-500/20',
-                                            'BLUE': 'border-blue-500 bg-blue-500/20',
-                                            'GREEN': 'border-green-500 bg-green-500/20',
-                                            'YELLOW': 'border-yellow-500 bg-yellow-500/20',
-                                            'PURPLE': 'border-purple-500 bg-purple-500/20',
-                                            'ORANGE': 'border-orange-500 bg-orange-500/20',
-                                            'CYAN': 'border-cyan-500 bg-cyan-500/20',
-                                            'PINK': 'border-pink-500 bg-pink-500/20',
-                                        };
-                                        const colorClass = colorMap[owner?.token_color] || 'border-white';
-
-                                        // Position overlay locally on the tile (BoardTile determines grid area, but we can't easily hook into it from outside if BoardTile is just a component)
-                                        // Wait, BoardTile returns a div with grid-row/col.
-                                        // We need to wrap BoardTile or be inside the grid cell. 
-                                        // BoardTile uses getGridPosition inside? No, passed prop? 
-                                        // Let's check BoardTile source.
-                                        // Assuming BoardTile renders at grid position.
-                                        // We can render a DIV at same grid position.
-                                        const { row, col } = getGridPosition(i);
-                                        return (
-                                            <div
-                                                className={`pointer-events-none absolute inset-0 z-10 border-4 border-dashed rounded-lg ${colorClass}`}
-                                                style={{ gridRow: row, gridColumn: col }}
-                                            />
-                                        );
-                                    }
-                                    return null;
-                                })()}
                             </div>
                         );
                     })}
@@ -209,6 +213,15 @@ export default function GameBoard() {
                     {/* Simple Wallet Icon */}
                     <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
+            </button>
+
+            {/* Heatmap Toggle (Dev/Stats Tool) */}
+            <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={`fixed bottom-6 left-6 z-[60] p-3 rounded-full shadow-lg border transition-all hover:scale-110 ${showHeatmap ? 'bg-red-600 border-red-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-white'}`}
+                title="Toggle Heatmap"
+            >
+                🔥
             </button>
         </div>
     );

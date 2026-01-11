@@ -11,6 +11,7 @@ type GameState struct {
 	ActiveAuction     *AuctionState     `json:"active_auction,omitempty"`
 	ActiveTrade       *TradeOffer       `json:"active_trade,omitempty"`
 	PropertyOwnership map[string]string `json:"property_ownership"` // PropertyID -> OwnerUserID
+	TileVisits        map[int]int       `json:"tile_visits"`        // TileIndex -> VisitCount
 }
 
 type TradeOffer struct {

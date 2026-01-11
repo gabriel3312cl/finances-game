@@ -490,14 +490,28 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 	}
 
 	if currentPlayer != nil {
+		oldPos := currentPlayer.Position
 		newPos := (currentPlayer.Position + total) % 64
 		currentPlayer.Position = newPos
+
+		// Track Visits
+		if game.TileVisits == nil {
+			game.TileVisits = make(map[int]int)
+		}
+		game.TileVisits[newPos]++
+
+		// Check Pass Go
+		var passGoMsg string
+		if newPos < oldPos { // If new position is less than old position, it means player passed GO
+			currentPlayer.Balance += 200
+			passGoMsg = " Passed GO! Collects $200."
+		}
 
 		// Check Tile
 		tileID := getLayoutID(newPos)
 		prop, isProperty := s.properties[tileID]
 
-		desc := currentPlayer.Name + " rolled " + strconv.Itoa(total) // Fix int to str
+		desc := currentPlayer.Name + " rolled " + strconv.Itoa(total) + passGoMsg // Fix int to str
 
 		if isProperty {
 			ownerID, isOwned := game.PropertyOwnership[tileID]
