@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gabriel3312cl/finances-game/backend/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
@@ -42,4 +44,27 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Invalid Token Claims", http.StatusUnauthorized)
 		}
 	}
+}
+
+// LoggingMiddleware logs incoming requests
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseWriter{w, http.StatusOK}
+		next.ServeHTTP(rw, r)
+		duration := time.Since(start)
+
+		log.Printf("[%s] %s %s %d %v", r.RemoteAddr, r.Method, r.URL.Path, rw.status, duration)
+	})
+}
+
+// Custom response writer to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
 }
