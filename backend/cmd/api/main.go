@@ -47,8 +47,11 @@ func main() {
 	hub := websocket.NewHub()
 	go hub.Run()
 
-	// Game Service (In-memory for now)
-	gameService := service.NewGameService(hub, db)
+	// Repositories
+	gameRepo := postgres.NewGameRepository(db)
+
+	// Game Service (In-memory + Persistence)
+	gameService := service.NewGameService(hub, db, gameRepo)
 
 	// Router
 	mux := http.NewServeMux()
@@ -66,6 +69,8 @@ func main() {
 	gameHandler := handler.NewGameHandler(gameService)
 	mux.HandleFunc("/games/create", handler.AuthMiddleware(gameHandler.CreateGame))
 	mux.HandleFunc("/games/join", handler.AuthMiddleware(gameHandler.JoinGame))
+	mux.HandleFunc("/games/my", handler.AuthMiddleware(gameHandler.GetMyGames))
+	mux.HandleFunc("/games/board", gameHandler.GetBoard) // public, or auth? Game board is generic. Public is fine.
 
 	// WebSocket Route
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

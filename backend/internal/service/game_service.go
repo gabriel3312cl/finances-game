@@ -12,45 +12,94 @@ import (
 
 	"github.com/gabriel3312cl/finances-game/backend/internal/domain"
 	"github.com/gabriel3312cl/finances-game/backend/internal/handler/websocket"
+	"github.com/gabriel3312cl/finances-game/backend/internal/repository/postgres"
 )
 
 type GameService struct {
-	games      map[string]*domain.GameState
-	properties map[string]domain.Property // Cache
-	db         *sql.DB
-	mu         sync.RWMutex
-	hub        *websocket.Hub
-	active     map[string]bool
+	games       map[string]*domain.GameState
+	properties  map[string]domain.Property // Cache
+	boardLayout map[int]string             // Position -> PropertyID (UUID)
+	db          *sql.DB
+	gameRepo    *postgres.GameRepository // Add Repo
+	mu          sync.RWMutex
+	hub         *websocket.Hub
+	active      map[string]bool
 }
 
-func NewGameService(hub *websocket.Hub, db *sql.DB) *GameService {
+func NewGameService(hub *websocket.Hub, db *sql.DB, gameRepo *postgres.GameRepository) *GameService {
 	s := &GameService{
-		games:      make(map[string]*domain.GameState),
-		properties: make(map[string]domain.Property),
-		db:         db,
-		hub:        hub,
-		active:     make(map[string]bool),
+		games:       make(map[string]*domain.GameState),
+		properties:  make(map[string]domain.Property),
+		boardLayout: make(map[int]string),
+		db:          db,
+		gameRepo:    gameRepo,
+		hub:         hub,
+		active:      make(map[string]bool),
 	}
-	s.loadProperties()
+	s.loadPropertiesAndLayout()
+	s.loadActiveGames() // Load from DB
 	return s
 }
 
-func (s *GameService) loadProperties() {
-	rows, err := s.db.Query("SELECT id, name, type, price, rent_base FROM properties")
+func (s *GameService) loadActiveGames() {
+	games, err := s.gameRepo.LoadActive()
 	if err != nil {
-		log.Printf("Error loading properties: %v", err)
+		log.Printf("Error loading active games: %v", err)
 		return
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var p domain.Property
-		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Price, &p.RentBase); err != nil {
-			continue
-		}
-		s.properties[p.ID] = p
+	for _, g := range games {
+		s.games[g.GameID] = g
+		log.Printf("Restored game: %s", g.GameID)
 	}
-	log.Printf("Loaded %d properties", len(s.properties))
+}
+
+// ... existing code ...
+
+func (s *GameService) addLog(game *domain.GameState, message string, logType string) {
+	entry := domain.EventLog{
+		Timestamp: time.Now().Unix(),
+		Message:   message,
+		Type:      logType,
+	}
+	game.Logs = append(game.Logs, entry)
+	game.LastAction = message // Keep legacy field for now
+
+	// Persist Log Immediately
+	go func() {
+		if err := s.gameRepo.SaveLog(game.GameID, entry); err != nil {
+			log.Printf("Error saving log: %v", err)
+		}
+	}()
+}
+
+func (s *GameService) saveGame(game *domain.GameState) {
+	// Trim logs if too long
+	if len(game.Logs) > 100 {
+		game.Logs = game.Logs[len(game.Logs)-100:]
+	}
+
+	// Helper to save async so we don't block
+	go func(g *domain.GameState) {
+		if err := s.gameRepo.Save(g); err != nil {
+			log.Printf("Error saving game %s: %v", g.GameID, err)
+		}
+	}(game)
+}
+
+func (s *GameService) GetGamesByUser(userID string) []*domain.GameState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*domain.GameState
+	for _, g := range s.games {
+		for _, p := range g.Players {
+			if p.UserID == userID {
+				result = append(result, g)
+				break
+			}
+		}
+	}
+	return result
 }
 
 func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
@@ -60,15 +109,16 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 	code := generateGameCode()
 	game := &domain.GameState{
 		GameID:            code,
-		Status:            "WAITING",
-		Board:             initializeBoard(),
+		Status:            domain.GameStatusWaiting,
+		Board:             s.initializeBoard(),
 		Players:           []*domain.PlayerState{},
 		PropertyOwnership: make(map[string]string),
 		TileVisits:        make(map[int]int),
-		CurrentTurnID:     host.ID, // Host starts? Or random.
+		CurrentTurnID:     host.ID,
+		Logs:              []domain.EventLog{},
+		TurnOrder:         []string{},
 	}
 
-	// Add Host
 	game.Players = append(game.Players, &domain.PlayerState{
 		UserID:     host.ID,
 		Name:       host.Username,
@@ -79,7 +129,48 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 	})
 
 	s.games[code] = game
+	s.saveGame(game) // Save
 	return game, nil
+}
+
+func (s *GameService) loadPropertiesAndLayout() {
+	// 1. Load Properties
+	rows, err := s.db.Query("SELECT id, name, type, price, rent_base FROM properties")
+	if err != nil {
+		log.Printf("Error loading properties: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var p domain.Property
+		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Price, &p.RentBase); err != nil {
+			continue
+		}
+		s.properties[p.ID] = p
+		count++
+	}
+	log.Printf("Loaded %d properties", count)
+
+	// 2. Load Board Layout
+	layout, err := s.gameRepo.LoadBoardLayout()
+	if err != nil {
+		log.Printf("Error loading board layout: %v", err)
+		return
+	}
+
+	for pos, item := range layout {
+		// We map Position -> PropertyID (UUID)
+		// If PropertyID is empty (e.g. Corner), we might store Type?
+		// For getLayoutID compatibility, let's store PropertyID if exists, else "TYPE"
+		if item.PropertyID != "" {
+			s.boardLayout[pos] = item.PropertyID
+		} else {
+			s.boardLayout[pos] = item.Type // e.g. "CORNER", "TAX"
+		}
+	}
+	log.Printf("Loaded %d layout items", len(s.boardLayout))
 }
 
 func (s *GameService) JoinGame(code string, user *domain.User) (*domain.GameState, error) {
@@ -149,8 +240,17 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 	}
 
 	switch action.Action {
+	case "JOIN_GAME":
+		// Just broadcast state to ensure client has it
+		s.broadcastGameState(game)
+	case "START_GAME":
+		s.handleStartGame(game, userID)
+	case "ROLL_ORDER":
+		s.handleRollOrder(game, userID)
 	case "ROLL_DICE":
 		s.handleRollDice(game, userID)
+	case "END_TURN":
+		s.handleEndTurn(game, userID)
 	case "START_AUCTION":
 		s.handleStartAuction(game, userID, action.Payload)
 	case "BID":
@@ -167,6 +267,18 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleAcceptTrade(game, userID, action.Payload)
 	case "REJECT_TRADE":
 		s.handleRejectTrade(game, userID, action.Payload)
+	case "FINALIZE_AUCTION":
+		s.handleFinalizeAuction(game)
+	}
+}
+
+func (s *GameService) handleFinalizeAuction(game *domain.GameState) {
+	if game.ActiveAuction == nil || !game.ActiveAuction.IsActive {
+		return
+	}
+	// Check if time is actually up
+	if time.Now().After(game.ActiveAuction.EndTime) {
+		s.endAuction(game)
 	}
 }
 
@@ -191,7 +303,7 @@ func (s *GameService) handleStartAuction(game *domain.GameState, userID string, 
 		EndTime:    time.Now().Add(30 * time.Second), // 30s auction
 		IsActive:   true,
 	}
-	game.LastAction = "Auction started for " + req.PropertyID // Better to use Name if available
+	game.LastAction = "Subasta iniciada por " + req.PropertyID // Better to use Name if available
 
 	s.broadcastGameState(game)
 }
@@ -260,9 +372,9 @@ func (s *GameService) endAuction(game *domain.GameState) {
 				break
 			}
 		}
-		game.LastAction = "Auction ended! Winner: " + game.ActiveAuction.BidderName
+		game.LastAction = "¡Subasta finalizada! Ganador: " + game.ActiveAuction.BidderName
 	} else {
-		game.LastAction = "Auction ended! No bids."
+		game.LastAction = "¡Subasta finalizada! Sin ofertas."
 	}
 
 	game.ActiveAuction = nil
@@ -303,7 +415,7 @@ func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, p
 	// 2. Execute Purchase
 	player.Balance -= int(prop.Price)
 	game.PropertyOwnership[req.PropertyID] = userID
-	game.LastAction = player.Name + " bought " + prop.Name + " for $" + strconv.Itoa(prop.Price) // Fix string cast
+	game.LastAction = player.Name + " compró " + prop.Name + " por $" + strconv.Itoa(prop.Price) // Fix string cast
 
 	// 3. Update Board UI (optional, if Board stores ownership too)
 	// We need to map PropertyID to Tile Index if we want to show it on board array
@@ -352,7 +464,7 @@ func (s *GameService) handleInitiateTrade(game *domain.GameState, userID string,
 		Status:            "PENDING",
 	}
 
-	game.LastAction = offererName + " proposed a trade to " + targetName
+	game.LastAction = offererName + " propuso un intercambio a " + targetName
 	s.broadcastGameState(game)
 }
 
@@ -382,7 +494,7 @@ func (s *GameService) handleAcceptTrade(game *domain.GameState, userID string, p
 
 	// Verify Cash funds
 	if offerer.Balance < int(trade.OfferCash) || target.Balance < int(trade.RequestCash) {
-		game.LastAction = "Trade failed: Insufficient funds"
+		game.LastAction = "Intercambio fallido: Fondos insuficientes"
 		game.ActiveTrade = nil
 		s.broadcastGameState(game)
 		return
@@ -408,7 +520,7 @@ func (s *GameService) handleAcceptTrade(game *domain.GameState, userID string, p
 		}
 	}
 
-	game.LastAction = "Trade accepted between " + trade.OffererName + " and " + trade.TargetName
+	game.LastAction = "Intercambio aceptado entre " + trade.OffererName + " y " + trade.TargetName
 	game.ActiveTrade = nil
 	s.broadcastGameState(game)
 }
@@ -422,7 +534,7 @@ func (s *GameService) handleRejectTrade(game *domain.GameState, userID string, p
 		return
 	}
 
-	game.LastAction = "Trade cancelled/rejected"
+	game.LastAction = "Intercambio cancelado/rechazado"
 	game.ActiveTrade = nil
 	s.broadcastGameState(game)
 }
@@ -447,7 +559,7 @@ func (s *GameService) handleTakeLoan(game *domain.GameState, userID string, payl
 			}
 			p.Balance += int(req.Amount)
 			p.Loan += req.Amount
-			game.LastAction = p.Name + " took a loan of $" + strconv.Itoa(req.Amount)
+			game.LastAction = p.Name + " tomó un préstamo de $" + strconv.Itoa(req.Amount)
 			break
 		}
 	}
@@ -477,7 +589,7 @@ func (s *GameService) handlePayLoan(game *domain.GameState, userID string, paylo
 
 			p.Balance -= int(req.Amount)
 			p.Loan -= req.Amount
-			game.LastAction = p.Name + " repaid loan: $" + strconv.Itoa(req.Amount)
+			game.LastAction = p.Name + " pagó el préstamo: $" + strconv.Itoa(req.Amount)
 			break
 		}
 	}
@@ -522,14 +634,18 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 		var passGoMsg string
 		if newPos < oldPos { // If new position is less than old position, it means player passed GO
 			currentPlayer.Balance += 200
-			passGoMsg = " Passed GO! Collects $200."
+			passGoMsg = " ¡Pasó por la SALIDA! Cobra $200."
 		}
 
 		// Check Tile
-		tileID := getLayoutID(newPos)
-		prop, isProperty := s.properties[tileID]
+		// 4. Update Log with result
+		desc := currentPlayer.Name + " lanzó " + strconv.Itoa(total) + passGoMsg // Fix int to str
 
-		desc := currentPlayer.Name + " rolled " + strconv.Itoa(total) + passGoMsg // Fix int to str
+		// Check Tile
+		propID := s.getLayoutID(newPos)
+		prop, isProperty := s.properties[propID]
+
+		tileID := propID // For consistency with old code
 
 		if isProperty {
 			ownerID, isOwned := game.PropertyOwnership[tileID]
@@ -554,38 +670,169 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 						}
 						currentPlayer.Balance -= actualPay
 						owner.Balance += actualPay
-						desc += ". Landed on " + prop.Name + " (Owned by " + owner.Name + "). Paid $" + strconv.Itoa(actualPay)
+						desc += ". Cayó en " + prop.Name + " (Propiedad de " + owner.Name + "). Pagó $" + strconv.Itoa(actualPay)
+						s.addLog(game, currentPlayer.Name+" pagó $"+strconv.Itoa(actualPay)+" de renta a "+owner.Name, "ALERT")
 					}
 				} else {
-					desc += ". Landed on own property."
+					desc += ". Cayó en su propia propiedad."
 				}
 			} else {
-				desc += ". Landed on Unowned " + prop.Name
+				desc += ". Cayó en " + prop.Name + " (Sin dueño)"
 			}
 		}
 
 		game.LastAction = desc
+		s.addLog(game, desc, "DICE")
 	}
 
-	// 4. Next Turn (Round Robin)
-	// Find index of current player
+	// 5. Broadcast (Explicit End Turn required now)
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
+	if game.Status != domain.GameStatusActive || game.CurrentTurnID != userID {
+		return
+	}
+
+	// Simple Next Turn Logic using TurnOrder if available, else standard order
 	idx := -1
-	for i, p := range game.Players {
-		if p.UserID == userID {
+	currentOrder := game.TurnOrder
+	// If TurnOrder is empty (legacy games), rebuild it
+	if len(currentOrder) == 0 {
+		for _, p := range game.Players {
+			currentOrder = append(currentOrder, p.UserID)
+		}
+		game.TurnOrder = currentOrder
+	}
+
+	for i, uid := range currentOrder {
+		if uid == userID {
 			idx = i
 			break
 		}
 	}
+
 	if idx != -1 {
-		nextIdx := (idx + 1) % len(game.Players)
-		game.CurrentTurnID = game.Players[nextIdx].UserID
+		nextIdx := (idx + 1) % len(currentOrder)
+		game.CurrentTurnID = currentOrder[nextIdx]
+
+		// Find Next Player Name
+		var nextName string
+		for _, p := range game.Players {
+			if p.UserID == game.CurrentTurnID {
+				nextName = p.Name
+				break
+			}
+		}
+		s.addLog(game, "El turno pasa a "+nextName, "INFO")
 	}
 
-	// 5. Broadcast
 	s.broadcastGameState(game)
 }
 
+func (s *GameService) handleStartGame(game *domain.GameState, userID string) {
+	// Only Host can start? For now anyone.
+	if game.Status != domain.GameStatusWaiting {
+		return
+	}
+	if len(game.Players) < 2 {
+		return // Minimum 2 players
+	}
+
+	game.Status = domain.GameStatusRollingOrder
+	s.addLog(game, "¡Juego Iniciado! Los jugadores deben lanzar dados para el orden.", "INFO")
+
+	// Reset any previous state if needed
+	game.TurnOrder = []string{}
+	// Note: We use PropertyOwnership as "Rolled Value" temporary storage?
+	// Or define a new map/struct?
+	// Simplified: We can store their roll in "Position" temporarily since they are all at 0 anyway?
+	// No, that messes up GO.
+	// Let's us use LastAction or a temp map log?
+	// Actually, easier to just add a temporary map or repurpose something.
+	// Let's repurpose 'TileVisits' key -1 -> Map[UserID]RollValue? No.
+	// We'll just filter logs or add a field if we really need to persistence.
+	// For MVP, we trust the logs or frontend state? No, backend must know.
+	// Let's assume we proceed immediately.
+
+	s.broadcastGameState(game)
+}
+
+// Temporary storage for order rolls (in memory). Ideally should be in DB/GameState
+var orderRolls = make(map[string]map[string]int) // GameID -> UserID -> Roll
+
+func (s *GameService) handleRollOrder(game *domain.GameState, userID string) {
+	if game.Status != domain.GameStatusRollingOrder {
+		return
+	}
+
+	// Check if already rolled
+	if orderRolls[game.GameID] == nil {
+		orderRolls[game.GameID] = make(map[string]int)
+	}
+	if _, ok := orderRolls[game.GameID][userID]; ok {
+		return
+	}
+
+	roll := rand.Intn(12) + 2 // 2-12
+	orderRolls[game.GameID][userID] = roll
+
+	s.addLog(game, getPlayerName(game, userID)+" lanzó "+strconv.Itoa(roll)+" para iniciativa.", "INFO")
+
+	// Check if all rolled
+	if len(orderRolls[game.GameID]) == len(game.Players) {
+		// All rolled, determine order
+		// Sort players by Roll descending
+		rolls := orderRolls[game.GameID]
+
+		// Create a slice of struct to sort
+		type pRoll struct {
+			UID  string
+			Roll int
+		}
+		var sorted []pRoll
+		for uid, r := range rolls {
+			sorted = append(sorted, pRoll{uid, r})
+		}
+
+		// Simple Bubble Sort
+		for i := 0; i < len(sorted); i++ {
+			for j := 0; j < len(sorted)-i-1; j++ {
+				if sorted[j].Roll < sorted[j+1].Roll {
+					sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
+				}
+			}
+		}
+
+		// Set Order
+		game.TurnOrder = []string{}
+		for _, pr := range sorted {
+			game.TurnOrder = append(game.TurnOrder, pr.UID)
+		}
+
+		game.CurrentTurnID = game.TurnOrder[0]
+		game.Status = domain.GameStatusActive
+		s.addLog(game, "¡Orden de turno determinado! "+getPlayerName(game, game.CurrentTurnID)+" comienza.", "SUCCESS")
+
+		// Cleanup
+		delete(orderRolls, game.GameID)
+	}
+
+	s.broadcastGameState(game)
+}
+
+func getPlayerName(game *domain.GameState, userID string) string {
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			return p.Name
+		}
+	}
+	return "Unknown"
+}
+
 func (s *GameService) broadcastGameState(game *domain.GameState) {
+	s.saveGame(game) // Persist every update
+
 	data, _ := json.Marshal(struct {
 		Type    string            `json:"type"`
 		Payload *domain.GameState `json:"payload"`
@@ -609,31 +856,48 @@ func generateGameCode() string {
 	return string(b)
 }
 
-func initializeBoard() []domain.Tile {
+func (s *GameService) GetBoardConfig() []domain.Tile {
+	return s.initializeBoard()
+}
+
+func (s *GameService) initializeBoard() []domain.Tile {
 	tiles := make([]domain.Tile, 64)
 	for i := 0; i < 64; i++ {
-		tiles[i] = domain.Tile{
-			ID:   i,
-			Type: "PROPERTY",
-			Name: "Unknown",
+		// Look up layout
+		id, ok := s.boardLayout[i]
+
+		var tile domain.Tile
+		tile.ID = i
+		tile.PropertyID = id
+
+		if ok {
+			// Check if it's a property
+			if prop, exists := s.properties[id]; exists {
+				tile.Name = prop.Name
+				tile.Type = prop.Type
+				tile.Price = prop.Price
+				tile.Rent = prop.RentBase // Base rent for config
+				tile.GroupIdentifier = prop.GroupID
+				tile.GroupName = prop.GroupName
+				tile.GroupColor = prop.GroupColor
+			} else {
+				// It's a special tile type string
+				tile.Type = id
+				tile.Name = id // e.g. "GO", "CHANCE"
+			}
+		} else {
+			tile.Name = "Unknown"
+			tile.Type = "TILE"
 		}
+
+		tiles[i] = tile
 	}
 	return tiles
 }
 
-func getLayoutID(index int) string {
-	layout := []string{
-		"GO", // 0
-		"1.1.1", "COMMUNITY_CHEST", "1.1.2", "1.1.3", "TAX_INCOME", "1.2.1", "4.1", "2.1", "1.2.2", "1.2.3", "5.1", "1.3.1", "CHANCE", "1.3.2", "1.3.3",
-		"JAIL", // 16
-		"1.4.1", "3.1", "1.4.2", "1.4.3", "4.2", "1.5.1", "1.5.2", "2.2", "5.2", "1.5.3", "COMMUNITY_CHEST", "1.6.1", "1.6.2", "3.2", "1.6.3",
-		"FREE_PARKING", // 32
-		"1.7.1", "3.3", "CHANCE", "1.7.2", "1.7.3", "4.3", "1.8.1", "2.3", "1.8.2", "1.8.3", "5.3", "1.9.1", "1.9.2", "3.4", "1.9.3",
-		"GO_TO_JAIL", // 48
-		"1.10.1", "1.10.2", "3.5", "COMMUNITY_CHEST", "1.10.3", "4.4", "1.11.1", "2.4", "3.6", "1.11.2", "1.11.3", "CHANCE", "1.12.1", "TAX_LUXURY", "1.12.2",
-	}
-	if index >= 0 && index < len(layout) {
-		return layout[index]
+func (s *GameService) getLayoutID(index int) string {
+	if val, ok := s.boardLayout[index]; ok {
+		return val
 	}
 	return ""
 }

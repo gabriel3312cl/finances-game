@@ -1,26 +1,50 @@
 'use client';
-import { useEffect, useState } from 'react'; // Added useState import
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithAuth, removeToken } from '@/lib/auth';
+import {
+    AppBar, Toolbar, Typography, Button, Container, Stack,
+    Card, CardContent, CardActions, TextField, Box,
+    IconButton, Alert
+} from '@mui/material';
+import { AccountCircle, ExitToApp, DeleteForever, AddCircle, Login as LoginIcon } from '@mui/icons-material';
+
+interface Game {
+    game_id: string;
+    players: any[];
+    status: string;
+}
 
 export default function DashboardPage() {
     const router = useRouter();
     const [user, setUser] = useState<{ user_id: string; username: string } | null>(null);
     const [joinCode, setJoinCode] = useState('');
+    const [myGames, setMyGames] = useState<Game[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const checkAuth = async () => {
+        const checkAuthAndLoad = async () => {
             try {
-                const res = await fetchWithAuth('/me');
-                if (res.ok) {
-                    const data = await res.json();
-                    setUser(data);
+                // Check Auth
+                const authRes = await fetchWithAuth('/me');
+                if (authRes.ok) {
+                    const userData = await authRes.json();
+                    setUser(userData);
+
+                    // Load My Games
+                    const gamesRes = await fetchWithAuth('/games/my');
+                    if (gamesRes.ok) {
+                        const gamesData = await gamesRes.json();
+                        setMyGames(gamesData || []);
+                    }
                 }
             } catch (error) {
-                console.error("Auth check failed", error);
+                console.error("Error al cargar datos", error);
+            } finally {
+                setLoading(false);
             }
         };
-        checkAuth();
+        checkAuthAndLoad();
     }, []);
 
     const handleLogout = () => {
@@ -33,13 +57,12 @@ export default function DashboardPage() {
             const res = await fetchWithAuth('/games/create', { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
-                router.push(`/game/${data.game_id}`); // Use internal ID for URL? Or Code? usually ID.
+                router.push(`/game/${data.game_id}`);
             } else {
-                alert('Failed to create game');
+                alert('Error al crear partida');
             }
         } catch (e) {
-            console.error(e);
-            alert('Error creating game');
+            alert('Error de conexión');
         }
     };
 
@@ -57,16 +80,15 @@ export default function DashboardPage() {
                 router.push(`/game/${data.game_id}`);
             } else {
                 const err = await res.json();
-                alert(err.message || 'Failed to join game');
+                alert(err.message || 'Error al unirse');
             }
         } catch (e) {
-            console.error(e);
-            alert('Error joining game');
+            alert('Error de conexión');
         }
     };
 
     const handleDeleteAccount = async () => {
-        if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
+        if (!confirm('¿Estás seguro de que quieres eliminar tu cuenta? No se puede deshacer.')) return;
 
         try {
             const res = await fetchWithAuth('/delete-account', { method: 'DELETE' });
@@ -75,89 +97,136 @@ export default function DashboardPage() {
                 router.push('/');
             }
         } catch (e) {
-            alert('Failed to delete account');
+            alert('Error al eliminar cuenta');
         }
     };
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white font-sans">
-            <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-md sticky top-0 z-50">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center">
-                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-orange-500">
-                                Finances Game
-                            </span>
-                        </div>
-                        <div className="flex items-center space-x-4">
-                            <span className="text-sm text-gray-400">Logged in as {user?.username || user?.user_id}</span>
-                            <button
-                                className="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-                                onClick={() => alert('Profile editing coming soon!')}
-                            >
-                                Edit Profile
-                            </button>
-                            <button
-                                onClick={handleLogout}
-                                className="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </nav>
+        <Box sx={{ flexGrow: 1, bgcolor: 'background.default', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+            {/* Navbar */}
+            <AppBar position="static" enableColorOnDark sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+                <Toolbar>
+                    <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 'bold', color: 'primary.main' }}>
+                        Juego de Finanzas
+                    </Typography>
 
-            <main className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Create Session Card */}
-                    <div onClick={handleCreateGame} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-amber-500/50 transition-colors group cursor-pointer relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <h3 className="text-2xl font-bold text-amber-400 mb-2">Create New Session</h3>
-                        <p className="text-gray-400 mb-6">Host a new game and become the tycoon.</p>
-                        <button onClick={(e) => { e.stopPropagation(); handleCreateGame(); }} className="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-lg text-white font-semibold shadow-lg shadow-amber-500/20 transition-all">
-                            Create Game
-                        </button>
-                    </div>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                            {user?.username}
+                        </Typography>
+                        <Button
+                            color="inherit"
+                            startIcon={<AccountCircle />}
+                            onClick={() => alert('Próximamente: Editar Perfil')}
+                        >
+                            Perfil
+                        </Button>
+                        <Button
+                            color="error"
+                            startIcon={<ExitToApp />}
+                            onClick={handleLogout}
+                        >
+                            Salir
+                        </Button>
+                    </Box>
+                </Toolbar>
+            </AppBar>
 
-                    {/* Join Session Card */}
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-blue-500/50 transition-colors group relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <h3 className="text-2xl font-bold text-blue-400 mb-2">Join Session</h3>
-                        <p className="text-gray-400 mb-6">Enter a code to join an existing lobby.</p>
-                        <div className="flex space-x-2 relative z-10">
-                            <input
-                                type="text"
-                                placeholder="CODE"
-                                value={joinCode}
-                                onChange={(e) => setJoinCode(e.target.value)}
-                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 text-white focus:ring-2 focus:ring-blue-500 outline-none uppercase tracking-widest"
-                            />
-                            <button onClick={handleJoinGame} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-semibold shadow-lg shadow-blue-500/20 transition-all">
-                                Join
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            <Container maxWidth="lg" sx={{ mt: 4, mb: 4, flexGrow: 1 }}>
+                <Stack spacing={4}>
+                    {/* Action Cards */}
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={4}>
+                        <Box sx={{ flex: 1 }}>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', transition: '0.3s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
+                                    <Typography gutterBottom variant="h5" component="div" color="primary">
+                                        Crear Nueva Sesión
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Crea una partida, invita amigos y conviértete en el magnate.
+                                    </Typography>
+                                </CardContent>
+                                <CardActions sx={{ p: 2 }}>
+                                    <Button fullWidth variant="contained" size="large" onClick={handleCreateGame} startIcon={<AddCircle />}>
+                                        Crear Partida
+                                    </Button>
+                                </CardActions>
+                            </Card>
+                        </Box>
 
-                {/* Active Games Section */}
-                <div className="mt-12">
-                    <h2 className="text-xl font-semibold text-gray-200 mb-6">Your Active Games</h2>
-                    <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-8 text-center text-gray-500">
-                        You don't have any active games yet.
-                    </div>
-                </div>
+                        <Box sx={{ flex: 1 }}>
+                            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', transition: '0.3s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+                                <CardContent sx={{ flexGrow: 1 }}>
+                                    <Typography gutterBottom variant="h5" component="div" color="secondary">
+                                        Unirse a Sesión
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Ingresa el código para unirte a una sala existente.
+                                    </Typography>
+                                    <TextField
+                                        fullWidth
+                                        label="CÓDIGO"
+                                        variant="outlined"
+                                        value={joinCode}
+                                        onChange={(e) => setJoinCode(e.target.value)}
+                                        inputProps={{ style: { textTransform: 'uppercase', letterSpacing: 2 } }}
+                                    />
+                                </CardContent>
+                                <CardActions sx={{ p: 2 }}>
+                                    <Button fullWidth variant="contained" color="secondary" size="large" onClick={handleJoinGame} startIcon={<LoginIcon />}>
+                                        Unirse
+                                    </Button>
+                                </CardActions>
+                            </Card>
+                        </Box>
+                    </Stack>
 
-                {/* Footer Actions */}
-                <div className="mt-20 border-t border-gray-800 pt-8 flex justify-center">
-                    <button
-                        onClick={handleDeleteAccount}
-                        className="text-red-500 hover:text-red-400 text-sm font-medium transition-colors"
-                    >
-                        Delete Account
-                    </button>
-                </div>
-            </main>
-        </div>
+                    {/* Active Games List */}
+                    <Box>
+                        <Typography variant="h5" sx={{ mb: 2, mt: 4, fontWeight: 'medium' }}>
+                            Tus Partidas Activas
+                        </Typography>
+
+                        {myGames.length === 0 ? (
+                            <Alert severity="info" variant="outlined">
+                                No tienes partidas activas en este momento. ¡Crea o únete a una!
+                            </Alert>
+                        ) : (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                                {myGames.map((game) => (
+                                    <Box key={game.game_id} sx={{ flex: '1 1 300px', maxWidth: '400px' }}>
+                                        <Card sx={{ bgcolor: 'background.paper', borderLeft: 6, borderColor: 'primary.main' }}>
+                                            <CardContent>
+                                                <Typography variant="h6">
+                                                    Partida #{game.game_id}
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Estado: {game.status}
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Jugadores: {game.players?.length || 0}
+                                                </Typography>
+                                            </CardContent>
+                                            <CardActions>
+                                                <Button size="small" onClick={() => router.push(`/game/${game.game_id}`)}>
+                                                    Continuar
+                                                </Button>
+                                            </CardActions>
+                                        </Card>
+                                    </Box>
+                                ))}
+                            </Box>
+                        )}
+                    </Box>
+                </Stack>
+
+                {/* Footer */}
+                <Box sx={{ mt: 8, display: 'flex', justifyContent: 'center' }}>
+                    <Button color="error" size="small" startIcon={<DeleteForever />} onClick={handleDeleteAccount}>
+                        Eliminar Cuenta
+                    </Button>
+                </Box>
+            </Container>
+        </Box>
     );
 }

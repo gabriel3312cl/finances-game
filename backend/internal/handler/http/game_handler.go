@@ -93,3 +93,17 @@ func (h *GameHandler) JoinGame(w http.ResponseWriter, r *http.Request) {
 		"message": "Joined game successfully",
 	})
 }
+
+func (h *GameHandler) GetMyGames(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("user_id").(string)
+	games := h.gameService.GetGamesByUser(userID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(games)
+}
+
+func (h *GameHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
+	board := h.gameService.GetBoardConfig()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(board)
+}

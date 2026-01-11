@@ -1,228 +1,600 @@
 'use client';
-import React from 'react';
-import { boardTiles, getGridPosition } from '@/config/boardData';
+import React, { useState, useEffect, useRef } from 'react';
+import { getGridPosition, TileData } from '@/config/boardData'; // Keep getGridPosition helper
 import BoardTile from './BoardTile';
-import { useGame } from '@/context/GameContext';
+import { useGameStore } from '@/store/gameStore';
+import { useBoardConfig } from '@/hooks/useGameQueries';
 import PlayerToken from './PlayerToken';
 
-import Link from 'next/link';
 import AuctionModal from './AuctionModal';
 import InventoryDrawer from './InventoryDrawer';
 import TradeModal from './TradeModal';
-import { useState } from 'react';
+import TileDetailModal from './TileDetailModal';
+import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
+import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut } from '@mui/icons-material';
 
 export default function GameBoard() {
-    const { gameState, sendMessage, user } = useGame();
+    // State from Store
+    const gameState = useGameStore((state) => state.game);
+    const user = useGameStore((state) => state.user);
+    const socket = useGameStore((state) => state.socket);
+
+    // Send Message Helper
+    const sendMessage = (action: string, payload: any) => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ action, payload }));
+        } else {
+            console.warn("Socket not connected or not found in store");
+        }
+    };
+
+    // No context, no local `useGameSocket` call here (handled in Page)
+
+
+
+    // Now use Store State
+    // const gameState = useGameStore(s => s.game); // This would be the "Refactored" way
+    // For safety, I'll use the one from store (synced).
+
+    // Board Data Logic
+    // We map `boardDataApi` (from REST) + `gameState` (Owner/Buildings) -> UI Tiles.
+    // The `boardDataApi` gives us the structure.
+    // If API isn't ready/mocked, we fall back to hardcoded? No, API is ready.
+
+    // Board Data Logic
+    const { data: boardDataApi } = useBoardConfig();
+
+    // Map API data (snake_case) to Frontend TileData (camelCase)
+    // If API is loading/empty, boardTiles is empty array
+    const boardTiles: TileData[] = (boardDataApi || []).map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        name: t.name,
+        propertyId: t.property_id,
+        groupId: t.group_identifier,
+        price: t.price,
+        rent: t.rent,
+        buildingCount: t.building_count,
+        // Map Color
+        color: t.group_color,
+        groupName: t.group_name
+    }));
+
+    // Local UI State
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);
     const [showHeatmap, setShowHeatmap] = useState(false);
+    const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
 
-    const handleRollDice = () => {
-        sendMessage('ROLL_DICE', {});
-    };
+    // ...
 
-    const getOwnerColor = (userId: string) => {
-        const owner = gameState?.players?.find((p: any) => p.user_id === userId);
-        const colorMap: Record<string, string> = {
-            'RED': '#ef4444',
-            'BLUE': '#3b82f6',
-            'GREEN': '#22c55e',
-            'YELLOW': '#eab308',
-            'PURPLE': '#a855f7',
-            'ORANGE': '#f97316',
-            'CYAN': '#06b6d4',
-            'PINK': '#ec4899',
-        };
-        return owner?.token_color ? colorMap[owner.token_color] : '#ffffff';
-    };
 
+    // Log Auto-Scroll
+    const logEndRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [gameState?.logs]);
+
+    // Derived States
+    const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
     const isMyTurn = gameState?.current_turn_id === user?.user_id;
+    const canStart = isHost && gameState?.status === 'WAITING' && (gameState?.players?.length >= 2);
+
+    // Helper to check if I can End Turn (simple: I rolled dice)
+    // Complex logic: check Logs if last action was 'DICE' or 'BUY' by me?
+    // For now, allow End Turn if it's my turn and I have rolled (gameState.dice is updated?)
+    // Better: Backend should track 'HasRolled' per turn.
+    // For this iteration, we allow "Finish Turn" if I am current turn.
+    // User must be responsible to Roll first. We can hide Roll button if already rolled 
+    // BUT we don't have that field yet. We will just trust the flow or use Log check.
+    const lastLog = gameState?.logs?.[gameState.logs.length - 1];
+    const hasRolled = isMyTurn && lastLog?.type === 'DICE' && lastLog.message.includes(gameState?.players?.find((p: any) => p.user_id === user.user_id)?.name);
+
+    // State for Settings
+    const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
+    const [zoomLevel, setZoomLevel] = useState(1);
+    const [tileScale, setTileScale] = useState(1); // Default scaling 1:1
+    const [fontScale, setFontScale] = useState(0.5); // Default font scaling 0.5
+
+    // Pan State
+    const [pan, setPan] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [startPan, setStartPan] = useState({ x: 0, y: 0 });
+
+    // Handlers
+    const handleSettingsClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+        setAnchorEl(event.currentTarget);
+    };
+    const handleSettingsClose = () => {
+        setAnchorEl(null);
+    };
+
+    // Pan Handlers
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsDragging(true);
+        setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDragging) return;
+        setPan({
+            x: e.clientX - startPan.x,
+            y: e.clientY - startPan.y
+        });
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    if (!gameState) return <Box sx={{ p: 4, color: 'white' }}>Cargando partida...</Box>;
+
+    // Dynamic Grid Construction
+    // Default is 17 tracks.
+    // Tracks 0,1 (Top) and 15,16 (Bottom) are edges. Indices [0,1, 15,16]
+    // Tracks 0,1 (Left) and 15,16 (Right) are edges.
+    const getTrackSize = (index: number) => {
+        if (index <= 1 || index >= 15) return `${tileScale}fr`;
+        return '1fr';
+    };
+    const gridTemplate = Array.from({ length: 17 }, (_, i) => getTrackSize(i)).join(' ');
+
 
     return (
-        <div className="w-full h-full relative p-4 flex items-center justify-center bg-gray-900 overflow-auto">
-            {/* Aspect Ratio Container to keep board square */}
-            <div className="aspect-square w-full max-w-[95vh] relative bg-gray-800 shadow-2xl rounded-xl overflow-hidden border-4 border-black">
+        <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'grey.900', overflow: 'hidden' }}>
 
-                {/* The Grid */}
-                <div
-                    className="w-full h-full grid grid-rows-[repeat(17,1fr)] grid-cols-[repeat(17,1fr)] bg-[#d4eac8]"
+            {/* HEADER TOOLBAR FOR SETTINGS */}
+            <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 100 }}>
+                <IconButton onClick={handleSettingsClick} sx={{ bgcolor: 'background.paper', boxShadow: 3, '&:hover': { bgcolor: 'background.paper' } }}>
+                    <SettingsIcon color="primary" />
+                </IconButton>
+                <Popover
+                    open={Boolean(anchorEl)}
+                    anchorEl={anchorEl}
+                    onClose={handleSettingsClose}
+                    anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                    transformOrigin={{ vertical: 'top', horizontal: 'right' }}
                 >
-                    {/* Render Tiles */}
-                    {boardTiles.map((tile, i) => {
-                        // Find players on this tile
-                        const playersOnTile = gameState?.players?.filter((p: any) => p.position === i) || [];
+                    <Box sx={{ p: 2, width: 300 }}>
+                        <Typography variant="subtitle2" gutterBottom fontWeight="bold">Configuración de Tablero</Typography>
 
-                        return (
-                            <div key={tile.id} className="relative contents">
-                                {/* Render the Tile itself. We can modify BoardTile to accept children (players) but better to overlay them?
-                                    Actually, BoardTile is self-contained. Let's modify BoardTile to accept 'players' prop or Render overlay here?
-                                    Since BoardTile has the grid positioning logic inside it, strict overlay here is tricky without duplicating logic.
-                                    Better: Pass players to BoardTile.
-                                */}
-                                {/* Wait, BoardTile handles its own Grid placement style.
-                                    We can just pass the children.
-                                */}
-                                {/* Ownership Indicator Overlay */}
-                                {tile.propertyId && gameState?.property_ownership?.[tile.propertyId] && (
-                                    <div
-                                        className="absolute inset-0 border-4 border-dashed z-10 pointer-events-none"
-                                        style={{ borderColor: getOwnerColor(gameState.property_ownership[tile.propertyId]) }}
-                                    />
-                                )}
+                        <Typography variant="caption" color="text.secondary">Zoom General (Arrastra para mover)</Typography>
+                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                            <ZoomOut fontSize="small" color="action" />
+                            <Slider
+                                value={zoomLevel}
+                                min={0.5}
+                                max={3.0}
+                                step={0.1}
+                                onChange={(_: Event, val: number | number[]) => setZoomLevel(val as number)}
+                                size="small"
+                            />
+                            <ZoomIn fontSize="small" color="action" />
+                        </Stack>
 
-                                {/* Heatmap Overlay */}
-                                {showHeatmap && gameState?.tile_visits?.[i] && (
-                                    <div
-                                        className="absolute inset-0 z-20 pointer-events-none bg-red-600 transition-opacity duration-500"
-                                        style={{
-                                            opacity: Math.min(0.8, (gameState.tile_visits[i] || 0) * 0.1 + 0.1)
-                                            // Simple formula: base 0.1 + 0.1 per visit, max 0.8
-                                        }}
-                                    >
-                                        <div className="flex items-center justify-center h-full text-white font-bold text-xs drop-shadow-md">
-                                            {gameState.tile_visits[i]}
-                                        </div>
-                                    </div>
-                                )}
+                        <Typography variant="caption" color="text.secondary">Tamaño de Casillas (vs Centro)</Typography>
+                        <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="caption" sx={{ minWidth: 20 }}>-</Typography>
+                            <Slider
+                                value={tileScale}
+                                min={0.5}
+                                max={3.0}
+                                step={0.1}
+                                onChange={(_: Event, val: number | number[]) => setTileScale(val as number)}
+                                size="small"
+                                valueLabelDisplay="auto"
+                            />
+                            <Typography variant="caption" sx={{ minWidth: 20 }}>+</Typography>
+                        </Stack>
 
-                                {/* Tile Content */}
-                                <BoardTile tile={tile} index={i} />
-                            </div>
-                        );
-                    })}
+                        <Typography variant="caption" color="text.secondary">Tamaño de Texto</Typography>
+                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                            <Typography variant="caption" sx={{ minWidth: 20 }}>A-</Typography>
+                            <Slider
+                                value={fontScale}
+                                min={0.5}
+                                max={2.0}
+                                step={0.1}
+                                onChange={(_: Event, val: number | number[]) => setFontScale(val as number)}
+                                size="small"
+                                valueLabelDisplay="auto"
+                            />
+                            <Typography variant="caption" sx={{ minWidth: 20 }}>A+</Typography>
+                        </Stack>
 
-                    {/* Render Players Overlay (Global) - Simpler than per-tile modification?
-                        We can iterate players and use getGridPosition to place them absolute/grid.
-                    */}
-                    {gameState?.players?.map((player: any) => {
-                        const { row, col } = getGridPosition(player.position);
-                        return (
-                            <div
-                                key={player.user_id}
-                                className="flex items-center justify-center pointer-events-none"
-                                style={{ gridRow: row, gridColumn: col, zIndex: 50 }}
-                            >
-                                <PlayerToken
-                                    color={player.token_color}
-                                    name={player.name}
-                                    isCurrentTurn={gameState.current_turn_id === player.user_id}
-                                />
-                            </div>
-                        );
-                    })}
+                        <Button
+                            variant="outlined"
+                            fullWidth
+                            size="small"
+                            sx={{ mb: 1 }}
+                            onClick={() => setTileScale(1)}
+                        >
+                            Casillas Uniformes (1:1)
+                        </Button>
 
-                    {/* Center Area (Logo, Dice, Chat) */}
-                    {/* Spans Rows 2-16 and Cols 2-16 */}
-                    <div
-                        className="row-start-2 row-end-[17] col-start-2 col-end-[17] bg-gray-900 relative flex flex-col items-center justify-center border border-gray-700 m-[1px] z-0"
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                            <Button size="small" onClick={() => { setZoomLevel(1); setTileScale(1); setFontScale(0.5); setPan({ x: 0, y: 0 }); }}>Reset Default</Button>
+                        </Box>
+                    </Box>
+                </Popover>
+            </Box>
+
+            {/* GAME AREA */}
+            <Box
+                sx={{
+                    flex: 1,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    p: 0,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    cursor: isDragging ? 'grabbing' : 'grab',
+                    touchAction: 'none'
+                }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                {/* Scale Wrapper */}
+                <Box
+                    sx={{
+                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
+                        transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                        transformOrigin: 'center center',
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }}
+                >
+                    <Paper
+                        elevation={10}
+                        sx={{
+                            // Fixed Aspect Ratio Box logic
+                            aspectRatio: '1/1',
+                            height: 'min(95%, 95vw)', // Fit to smaller dimension mostly
+                            width: 'auto', // Let aspect ratio drive width
+                            maxHeight: '100%',
+                            maxWidth: '100%',
+                            position: 'relative',
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                            boxShadow: '0 0 40px rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            flexDirection: 'column'
+                        }}
                     >
-                        {/* Branding */}
-                        <div className="absolute opacity-20 transform -rotate-45 select-none pointer-events-none">
-                            <h1 className="text-9xl font-black text-amber-500">MONOPOLY</h1>
-                        </div>
+                        {/* The Grid */}
+                        <Box
+                            sx={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'grid',
+                                gridTemplateRows: gridTemplate,
+                                gridTemplateColumns: gridTemplate,
+                                bgcolor: '#d4eac8'
+                            }}
+                        >
+                            {boardTiles.map((tile, i) => (
+                                <Box key={tile.id} sx={{ position: 'relative', display: 'contents' }}>
+                                    <BoardTile
+                                        tile={tile}
+                                        index={i}
+                                        onClick={() => setSelectedTile(tile)}
+                                        fontScale={fontScale}
+                                        ownerColor={tile.propertyId ? getOwnerColor(gameState, tile.propertyId) : undefined}
+                                    />
+                                </Box>
+                            ))}
 
-                        <div className="z-10 text-white text-center space-y-6">
+                            {/* Players */}
+                            {/* Players */}
+                            {(() => {
+                                // Group players by position
+                                const playersByPosition: { [key: number]: any[] } = {};
+                                gameState.players?.forEach((p: any) => {
+                                    if (!playersByPosition[p.position]) playersByPosition[p.position] = [];
+                                    playersByPosition[p.position].push(p);
+                                });
 
-                            {/* Game Info */}
-                            <div className="bg-gray-800/80 backdrop-blur p-4 rounded-xl border border-gray-700">
-                                <h2 className="text-xl font-bold text-amber-500">
-                                    {gameState ? `Turn: ${gameState.current_turn_id === user?.user_id ? 'YOUR TURN' : 'Waiting...'}` : 'Waiting for game data...'}
-                                </h2>
-                                {gameState?.last_action && (
-                                    <p className="text-sm text-gray-300 mt-2 italic">"{gameState.last_action}"</p>
+                                return Object.entries(playersByPosition).flatMap(([posStr, players]) => {
+                                    const position = parseInt(posStr);
+                                    const { row, col } = getGridPosition(position);
+
+                                    return players.map((player: any, index: number) => {
+                                        // Calculate Offset
+                                        // If multiple players (length > 1), offset them.
+                                        // Simple horizontal offset: (index - (total-1)/2) * offsetAmount
+                                        const count = players.length;
+                                        const offsetX = count > 1 ? (index - (count - 1) / 2) * 20 : 0;
+                                        const offsetY = count > 1 ? (index % 2 === 0 ? -5 : 5) : 0; // Zig-zag slightly vertical too
+
+                                        return (
+                                            <Box
+                                                key={player.user_id}
+                                                sx={{
+                                                    gridRow: row,
+                                                    gridColumn: col,
+                                                    zIndex: 50 + index,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    pointerEvents: 'none',
+                                                    transform: `translate(${offsetX}px, ${offsetY}px)`,
+                                                    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                                                }}
+                                            >
+                                                <PlayerToken color={player.token_color} name={player.name} isCurrentTurn={gameState.current_turn_id === player.user_id} />
+                                            </Box>
+                                        );
+                                    });
+                                });
+                            })()}
+
+                            {/* CENTER CONSOLE */}
+                            <Box sx={{
+                                gridRow: '2 / 17',
+                                gridColumn: '2 / 17',
+                                bgcolor: 'grey.900',
+                                m: 1,
+                                borderRadius: 4,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                position: 'relative',
+                                border: 1,
+                                borderColor: 'grey.800'
+                            }}>
+
+                                {/* STATUS: WAITING */}
+                                {gameState.status === 'WAITING' && (
+                                    <Box sx={{ textAlign: 'center', p: 4 }}>
+                                        <Typography variant="h4" color="white" gutterBottom>Esperando Jugadores...</Typography>
+                                        <Typography variant="body1" color="grey.400" gutterBottom>Jugadores conectados: {gameState.players.length}</Typography>
+                                        {canStart && (
+                                            <Button variant="contained" color="success" size="large" startIcon={<PlayArrow />} onClick={() => sendMessage('START_GAME', {})}>
+                                                INICIAR PARTIDA
+                                            </Button>
+                                        )}
+                                        {!isHost && <Typography variant="caption" color="grey.600">Solo el anfitrión puede iniciar.</Typography>}
+                                    </Box>
                                 )}
-                            </div>
 
-                            {/* Dice Result */}
-                            {gameState?.dice && (
-                                <div className="flex justify-center space-x-4">
-                                    <div className="w-16 h-16 bg-white text-black rounded-lg flex items-center justify-center text-4xl font-bold shadow-lg border-2 border-gray-300">
-                                        {gameState.dice[0]}
-                                    </div>
-                                    <div className="w-16 h-16 bg-white text-black rounded-lg flex items-center justify-center text-4xl font-bold shadow-lg border-2 border-gray-300">
-                                        {gameState.dice[1]}
-                                    </div>
-                                </div>
-                            )}
+                                {/* STATUS: ROLLING ORDER */}
+                                {gameState.status === 'ROLLING_ORDER' && (
+                                    <Box sx={{ textAlign: 'center', p: 4 }}>
+                                        <Typography variant="h5" color="warning.main" gutterBottom>Fase de Inicialización</Typography>
+                                        <Typography variant="body1" color="white" gutterBottom>
+                                            Lanza los dados para determinar el orden de los turnos.
+                                        </Typography>
 
-                            {/* Controls */}
-                            {isMyTurn && (
-                                <div className="space-y-4">
-                                    <button
-                                        onClick={handleRollDice}
-                                        className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold rounded-full shadow-lg shadow-green-500/30 transform hover:scale-105 transition-all text-xl block w-full"
-                                    >
-                                        ROLL DICE
-                                    </button>
-
-                                    {(() => {
-                                        // Property Buy Logic
-                                        const currentPlayer = gameState?.players?.find((p: any) => p.user_id === user?.user_id);
-                                        if (currentPlayer) {
-                                            const currentTile = boardTiles[currentPlayer.position];
-                                            if (currentTile && currentTile.propertyId) {
-                                                const ownerID = gameState?.property_ownership?.[currentTile.propertyId];
-                                                if (!ownerID) {
-                                                    return (
-                                                        <button
-                                                            onClick={() => sendMessage('BUY_PROPERTY', { property_id: currentTile.propertyId })}
-                                                            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-400 hover:to-cyan-500 text-white font-bold rounded-full shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-all text-xl block w-full"
-                                                        >
-                                                            BUY {currentTile.name} (${currentTile.price})
-                                                        </button>
-                                                    );
-                                                }
+                                        {/* Check if I already rolled in logs */}
+                                        {(() => {
+                                            const myRollLog = gameState.logs?.find((l: any) => l.message.includes(user?.name) && l.message.includes('initiative'));
+                                            if (myRollLog) {
+                                                return <Typography variant="h6" color="success.light">¡Ya has lanzado! Esperando a los demás...</Typography>;
                                             }
-                                        }
-                                        return null;
-                                    })()}
+                                            return (
+                                                <Button variant="contained" color="warning" size="large" onClick={() => sendMessage('ROLL_ORDER', {})}>
+                                                    LANZAR DADO (INICIATIVA)
+                                                </Button>
+                                            );
+                                        })()}
+                                    </Box>
+                                )}
 
-                                    {/* Test Auction Button (Dev only) */}
-                                    <button
-                                        onClick={() => sendMessage('START_AUCTION', { property_id: 'TEST_PROP' })}
-                                        className="text-xs text-gray-500 underline hover:text-white"
-                                    >
-                                        [Dev] Start Auction
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                                {/* STATUS: ACTIVE */}
+                                {gameState.status === 'ACTIVE' && (
+                                    <Box sx={{ width: '100%', maxWidth: 500, p: 2, textAlign: 'center' }}>
+                                        <Typography variant="h4" fontWeight="900" color="primary" sx={{ opacity: 0.1, userSelect: 'none' }}>MONOPOLY</Typography>
 
-                </div>
-            </div>
+                                        <Paper sx={{ my: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2 }}>
+                                            <Typography variant="h5" fontWeight="bold" color="primary">
+                                                {isMyTurn ? '¡TU TURNO!' : `Turno de: ${gameState.players?.find((p: any) => p.user_id === gameState.current_turn_id)?.name}`}
+                                            </Typography>
+                                        </Paper>
 
-            {/* Global Modals */}
-            <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
+                                        {/* Dice Display */}
+                                        {gameState.dice && (
+                                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 3 }}>
+                                                {gameState.dice.map((d: number, i: number) => (
+                                                    <Paper key={i} sx={{ width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
+                                                        <Typography variant="h4" fontWeight="bold">{d}</Typography>
+                                                    </Paper>
+                                                ))}
+                                            </Box>
+                                        )}
+
+                                        {/* Actions */}
+                                        {isMyTurn && (
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                                                {!hasRolled && (
+                                                    <Button variant="contained" color="success" size="large" startIcon={<Casino />} onClick={() => sendMessage('ROLL_DICE', {})} sx={{ px: 4, py: 1.5, borderRadius: 8, fontSize: '1.2rem' }}>
+                                                        LANZAR DADOS
+                                                    </Button>
+                                                )}
+                                                {/* Buy Logic & End Turn Control */}
+                                                {hasRolled && (() => {
+                                                    const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                                                    if (!me) return null; // Guard against undefined
+
+                                                    // Use dynamic board from gameState
+                                                    const tile = gameState?.board?.[me.position];
+                                                    if (!tile) return null;
+
+                                                    // Check ownership using property_id (snake_case from API)
+                                                    const propId = tile.property_id;
+                                                    const isUnownedProperty = propId && !gameState.property_ownership?.[propId];
+
+                                                    // Force Action if on Unowned Property
+                                                    // If it's an unowned property, HIDE End Turn until dealt with.
+                                                    // Also ensure it's a purchasable type
+                                                    const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD';
+                                                    const mustBuyOrAuction = isUnownedProperty && isPurchasable;
+                                                    const canEndTurn = !mustBuyOrAuction;
+
+                                                    return (
+                                                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                                            {/* Action Buttons for Unowned Property */}
+                                                            {mustBuyOrAuction && (
+                                                                <Stack direction="row" spacing={1}>
+                                                                    <Button
+                                                                        variant="contained"
+                                                                        color="info"
+                                                                        disabled={(me.balance || 0) < (tile.price || 0)}
+                                                                        onClick={() => sendMessage('BUY_PROPERTY', { property_id: propId })}
+                                                                    >
+                                                                        COMPRAR (${tile.price})
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="outlined"
+                                                                        color="warning"
+                                                                        onClick={() => sendMessage('START_AUCTION', { property_id: propId })}
+                                                                    >
+                                                                        SUBASTAR
+                                                                    </Button>
+                                                                </Stack>
+                                                            )}
+
+                                                            {/* End Turn Button - Only if allowed */}
+                                                            {canEndTurn && (
+                                                                <Button variant="contained" color="error" size="large" startIcon={<CheckCircle />} onClick={() => sendMessage('END_TURN', {})} sx={{ px: 4, py: 1.5, borderRadius: 8 }}>
+                                                                    FINALIZAR TURNO
+                                                                </Button>
+                                                            )}
+                                                        </Box>
+                                                    );
+                                                })()}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                )}
+                            </Box>
+                        </Box>
+                    </Paper>
+                </Box>
+            </Box>
+
+            {/* Persistent Funds Display (Tablet/Mobile) */}
+            {(() => {
+                const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                if (me) {
+                    return (
+                        <Paper
+                            elevation={3}
+                            sx={{
+                                position: 'fixed',
+                                top: 16,
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                zIndex: 100,
+                                px: 3,
+                                py: 1,
+                                borderRadius: 4,
+                                bgcolor: 'rgba(255, 255, 255, 0.9)',
+                                backdropFilter: 'blur(4px)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                border: '2px solid',
+                                borderColor: 'primary.main'
+                            }}
+                        >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="subtitle2" color="text.secondary" fontWeight="bold">TU EFECTIVO:</Typography>
+                                <Typography variant="h6" color="success.main" fontWeight="bold">
+                                    ${(me.balance || 0).toLocaleString()}
+                                </Typography>
+                            </Box>
+                        </Paper>
+                    );
+                }
+            })()}
+
+            {/* LOG CONSOLE */}
+            <Paper sx={{ height: 160, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+                <Box sx={{ px: 2, py: 0.5, bgcolor: 'grey.900', borderBottom: 1, borderColor: 'grey.800', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <History fontSize="small" color="disabled" />
+                    <Typography variant="caption" color="grey.500" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Registro de Eventos</Typography>
+                </Box>
+                <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace' }}>
+                    {gameState.logs?.map((log: any, i: number) => (
+                        <ListItem key={i} sx={{ py: 0.2 }}>
+                            <ListItemText
+                                primary={
+                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type) }}>
+                                        <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
+                                        {translateLog(log.message)}
+                                    </Typography>
+                                }
+                            />
+                        </ListItem>
+                    ))}
+                    <div ref={logEndRef} />
+                </List>
+            </Paper>
+
+            {/* Drawers & Modals */}
+            <InventoryDrawer isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} gameState={gameState} user={user} sendMessage={sendMessage} />
             <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
+            <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
 
-            <InventoryDrawer
-                isOpen={isInventoryOpen}
-                onClose={() => setIsInventoryOpen(false)}
+            <TileDetailModal
+                tile={selectedTile}
                 gameState={gameState}
-                user={user}
-                sendMessage={sendMessage}
+                onClose={() => setSelectedTile(null)}
             />
 
-            {/* Floating Action Button for Inventory */}
-            <button
-                onClick={() => setIsInventoryOpen(true)}
-                className="fixed bottom-6 right-6 z-[60] bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-full shadow-2xl border border-gray-600 transition-all hover:scale-110 group"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-500 group-hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2 10a4 4 0 014-4h2.08a2.4 2.4 0 011.92.96L11 8h5a1 1 0 011 1v7a1 1 0 01-1 1H6a4 4 0 01-4-4v-3zm3.293-2.707a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l5 5a1 1 0 01-1.414 1.414L15 10.414V18a2 2 0 01-2 2H6a2 2 0 01-2-2v-4.586l.293.293a1 1 0 01-1.414-1.414l5-5z" />
-                    {/* Simple Wallet Icon */}
-                    <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-            </button>
-
-            {/* Heatmap Toggle (Dev/Stats Tool) */}
-            <button
-                onClick={() => setShowHeatmap(!showHeatmap)}
-                className={`fixed bottom-6 left-6 z-[60] p-3 rounded-full shadow-lg border transition-all hover:scale-110 ${showHeatmap ? 'bg-red-600 border-red-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-white'}`}
-                title="Toggle Heatmap"
-            >
-                🔥
-            </button>
-        </div>
+            {/* FABs */}
+            <Box sx={{ position: 'fixed', bottom: 180, right: 24, zIndex: 60 }}>
+                <Tooltip title="Inventario"><IconButton onClick={() => setIsInventoryOpen(true)} size="large" sx={{ bgcolor: 'background.paper' }}><Wallet color="secondary" /></IconButton></Tooltip>
+            </Box>
+        </Box>
     );
+}
+
+function translateLog(message: string): string {
+    if (!message) return '';
+
+    return message
+        .replace(/ rolled /g, ' lanzó ')
+        .replace(/ landed on /g, ' cayó en ')
+        .replace(/ bought /g, ' compró ')
+        .replace(/ paid rent of /g, ' pagó renta de ')
+        .replace(/ to /g, ' a ')
+        .replace(/Turn started for/g, 'Comienza turno de')
+        .replace(/Game started!/g, '¡Juego iniciado!')
+        .replace(/ joined the game./g, ' se unió a la partida.')
+        .replace(/ for /g, ' por ')
+        .replace(/Property/g, 'Propiedad')
+        .replace(/auctioned/g, 'subastado')
+        .replace(/won the auction for/g, 'ganó la subasta de')
+        .replace(/with a bid of/g, 'con una oferta de')
+        .replace(/Insufficient funds/g, 'Fondos insuficientes')
+        .replace(/You must roll the dice first/g, 'Debes lanzar los dados primero')
+        .replace(/It is not your turn/g, 'No es tu turno');
+}
+
+
+
+function getOwnerColor(gameState: any, propertyId: string) {
+    const ownerId = gameState.property_ownership[propertyId];
+    const owner = gameState.players.find((p: any) => p.user_id === ownerId);
+    const colorMap: Record<string, string> = {
+        'RED': '#ef4444', 'BLUE': '#3b82f6', 'GREEN': '#22c55e', 'YELLOW': '#eab308',
+        'PURPLE': '#a855f7', 'ORANGE': '#f97316', 'CYAN': '#06b6d4', 'PINK': '#ec4899',
+    };
+    return owner?.token_color ? colorMap[owner.token_color] : undefined;
+}
+
+function getLogColor(type: string) {
+    switch (type) {
+        case 'ALERT': return '#ff5252';
+        case 'SUCCESS': return '#69f0ae';
+        case 'DICE': return '#40c4ff';
+        case 'INFO': default: return '#e0e0e0';
+    }
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL, setToken } from '@/lib/auth';
 import Link from 'next/link';
+import { Container, Box, Typography, TextField, Button, Paper, Alert, Link as MuiLink } from '@mui/material';
 
 export default function LoginPage() {
     const [username, setUsername] = useState('');
@@ -22,7 +23,8 @@ export default function LoginPage() {
             });
 
             if (!res.ok) {
-                throw new Error(await res.text() || 'Login failed');
+                const text = await res.text();
+                throw new Error(text || 'Error al iniciar sesión');
             }
 
             const data = await res.json();
@@ -34,64 +36,83 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-900 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-black text-white">
-            <div className="w-full max-w-md p-8 space-y-8 bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700 shadow-2xl">
-                <div className="text-center">
-                    <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">
-                        Welcome Back
-                    </h2>
-                    <p className="mt-2 text-sm text-gray-400">Sign in to resume your empire</p>
-                </div>
+        <Box
+            sx={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'radial-gradient(circle at top, #1f2937, #111827)',
+            }}
+        >
+            <Container maxWidth="xs">
+                <Paper
+                    elevation={10}
+                    sx={{
+                        p: 4,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        bgcolor: 'background.paper',
+                        borderRadius: 2,
+                    }}
+                >
+                    <Typography component="h1" variant="h4" sx={{ mb: 1, fontWeight: 'bold', background: 'linear-gradient(45deg, #34d399, #22d3ee)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Bienvenido
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Inicia sesión para continuar tu imperio
+                    </Typography>
 
-                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-                    <div className="space-y-4">
-                        <div>
-                            <label htmlFor="username" className="sr-only">Username</label>
-                            <input
-                                id="username"
-                                name="username"
-                                type="text"
-                                required
-                                className="appearance-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-500 text-gray-100 rounded-lg bg-gray-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:z-10 sm:text-sm transition-all"
-                                placeholder="Username"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="password" className="sr-only">Password</label>
-                            <input
-                                id="password"
-                                name="password"
-                                type="password"
-                                required
-                                className="appearance-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-500 text-gray-100 rounded-lg bg-gray-700/50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:z-10 sm:text-sm transition-all"
-                                placeholder="Password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                    </div>
+                    <Box component="form" onSubmit={handleLogin} sx={{ mt: 1, width: '100%' }}>
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            id="username"
+                            label="Nombre de Usuario"
+                            name="username"
+                            autoComplete="username"
+                            autoFocus
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            name="password"
+                            label="Contraseña"
+                            type="password"
+                            id="password"
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
 
-                    {error && <div className="text-red-400 text-sm text-center">{error}</div>}
+                        {error && (
+                            <Alert severity="error" sx={{ mt: 2 }}>
+                                {error}
+                            </Alert>
+                        )}
 
-                    <div>
-                        <button
+                        <Button
                             type="submit"
-                            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transform hover:scale-[1.02] transition-all duration-200 shadow-lg shadow-emerald-500/20"
+                            fullWidth
+                            variant="contained"
+                            sx={{ mt: 3, mb: 2, bgcolor: 'secondary.main', '&:hover': { bgcolor: 'secondary.dark' } }}
                         >
-                            Sign in
-                        </button>
-                    </div>
-                </form>
+                            Iniciar Sesión
+                        </Button>
 
-                <div className="text-center text-sm">
-                    <span className="text-gray-400">Don't have an account? </span>
-                    <Link href="/register" className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
-                        Register here
-                    </Link>
-                </div>
-            </div>
-        </div>
+                        <Box sx={{ textAlign: 'center' }}>
+                            <MuiLink component={Link} href="/register" variant="body2" color="secondary" sx={{ cursor: 'pointer' }}>
+                                {"¿No tienes cuenta? Regístrate aquí"}
+                            </MuiLink>
+                        </Box>
+                    </Box>
+                </Paper>
+            </Container>
+        </Box>
     );
 }

@@ -1,6 +1,12 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
-import { useGame } from '@/context/GameContext';
+import React, { useEffect, useState } from 'react';
+
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions, Button,
+    Typography, Box, TextField, LinearProgress, Chip, Paper,
+    InputAdornment, IconButton
+} from '@mui/material';
+import { Gavel, AccessTime, EmojiEvents } from '@mui/icons-material';
 
 interface AuctionModalProps {
     gameState: any;
@@ -13,6 +19,13 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
     const [timeLeft, setTimeLeft] = useState<number>(0);
     const [customBid, setCustomBid] = useState<string>('');
 
+    // Find Property Name from Board (Moved up to obey Hook Rules)
+    const propertyName = React.useMemo(() => {
+        if (!auction || !gameState?.board) return auction?.property_id;
+        const tile = gameState.board.find((t: any) => t.property_id === auction.property_id);
+        return tile ? tile.name : auction.property_id;
+    }, [auction, gameState]);
+
     // Timer Logic
     useEffect(() => {
         if (!auction || !auction.is_active) return;
@@ -22,6 +35,11 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
             const now = new Date().getTime();
             const diff = Math.max(0, Math.floor((end - now) / 1000));
             setTimeLeft(diff);
+
+            if (diff <= 0) {
+                // Trigger backend finalization
+                sendMessage('FINALIZE_AUCTION', {});
+            }
         }, 1000);
 
         return () => clearInterval(interval);
@@ -30,94 +48,128 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
     if (!auction || !auction.is_active) return null;
 
     const currentBid = auction.highest_bid || 0;
-    const minBid = currentBid + 1;
+    // const propertyName above replaces the boardTiles lookup
+    const isWinning = auction.bidder_id === user?.user_id;
 
     const handleBid = (amount: number) => {
         sendMessage('BID', { amount });
         setCustomBid('');
     };
 
-    const isWinning = auction.bidder_id === user?.user_id;
-
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-amber-500/50 p-8 rounded-2xl shadow-2xl max-w-md w-full relative overflow-hidden">
-                {/* Glow Effect */}
-                <div className={`absolute top-0 left-0 w-full h-2 ${isWinning ? 'bg-green-500 shadow-[0_0_20px_rgba(34,197,94,0.5)]' : 'bg-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.5)]'}`} />
+        <Dialog
+            open={true}
+            maxWidth="xs"
+            fullWidth
+            PaperProps={{
+                sx: {
+                    borderRadius: 3,
+                    border: 2,
+                    borderColor: 'warning.main',
+                    bgcolor: 'grey.900',
+                    backgroundImage: 'linear-gradient(to bottom right, #212121, #000000)'
+                }
+            }}
+        >
+            <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, bgcolor: isWinning ? 'success.main' : 'warning.main', boxShadow: isWinning ? '0 0 10px #4caf50' : 'none' }} />
 
-                <h2 className="text-3xl font-bold text-white mb-2 text-center uppercase tracking-widest">Auction</h2>
-                <div className="text-center mb-6">
-                    <p className="text-gray-400 text-sm">Property</p>
-                    <p className="text-xl text-amber-400 font-bold">{auction.property_id}</p> {/* TODO: Use Name map */}
-                </div>
+            <DialogTitle sx={{ textAlign: 'center', color: 'common.white', textTransform: 'uppercase', letterSpacing: 2, pt: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                    <Gavel fontSize="large" color="warning" />
+                    SUBASTA
+                </Box>
+            </DialogTitle>
+
+            <DialogContent>
+                <Box sx={{ textAlign: 'center', mb: 3 }}>
+                    <Typography variant="caption" color="grey.400">PROPIEDAD EN JUEGO</Typography>
+                    <Typography variant="h5" color="warning.main" fontWeight="bold">
+                        {propertyName}
+                    </Typography>
+                </Box>
 
                 {/* Timer */}
-                <div className="flex justify-center mb-8">
-                    <div className={`text-5xl font-mono font-bold ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+                    <Typography variant="h2" fontFamily="monospace" fontWeight="bold" color={timeLeft < 10 ? 'error.main' : 'common.white'} sx={{ lineHeight: 1 }}>
                         00:{timeLeft.toString().padStart(2, '0')}
-                    </div>
-                </div>
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'grey.500', mt: 1 }}>
+                        <AccessTime fontSize="small" />
+                        <Typography variant="caption">TIEMPO RESTANTE</Typography>
+                    </Box>
+                </Box>
 
-                {/* Status */}
-                <div className="bg-gray-700/50 rounded-lg p-4 mb-6 border border-gray-600">
-                    <div className="flex justify-between items-end mb-2">
-                        <span className="text-gray-400 text-sm">Highest Bid</span>
-                        <span className="text-3xl font-bold text-green-400">${currentBid}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-400">Bidder</span>
-                        <span className={`${isWinning ? 'text-green-400 font-bold' : 'text-white'}`}>
-                            {auction.bidder_name || 'No bids yet'}
-                        </span>
-                    </div>
-                </div>
+                {/* Status Card */}
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.800', borderColor: 'grey.700', mb: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', mb: 1 }}>
+                        <Typography variant="body2" color="grey.400">Oferta Más Alta</Typography>
+                        <Typography variant="h4" color="success.light" fontWeight="bold">${currentBid}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" color="grey.500">Líder</Typography>
+                        {isWinning ? (
+                            <Chip icon={<EmojiEvents />} label="¡TÚ!" color="success" size="small" />
+                        ) : (
+                            <Typography variant="body2" color="common.white">{auction.bidder_name || 'Nadie'}</Typography>
+                        )}
+                    </Box>
+                </Paper>
 
-                {/* Controls */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                    <button
-                        onClick={() => handleBid(currentBid + 10)}
-                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border border-gray-600 transition-all hover:scale-105"
-                    >
-                        + $10
-                    </button>
-                    <button
-                        onClick={() => handleBid(currentBid + 50)}
-                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border border-gray-600 transition-all hover:scale-105"
-                    >
-                        + $50
-                    </button>
-                    <button
-                        onClick={() => handleBid(currentBid + 100)}
-                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 rounded-lg border border-gray-600 transition-all hover:scale-105"
-                    >
-                        + $100
-                    </button>
-                    <div className="relative">
-                        <input
-                            type="number"
-                            value={customBid}
-                            onChange={(e) => setCustomBid(e.target.value)}
-                            placeholder="Custom"
-                            className="w-full h-full bg-gray-900 border border-gray-600 rounded-lg px-3 text-white focus:outline-none focus:border-amber-500 text-center font-mono"
-                        />
-                        <button
-                            onClick={() => {
-                                const val = parseInt(customBid);
-                                if (val > currentBid) handleBid(val);
-                            }}
-                            className="absolute right-1 top-1 bottom-1 px-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded flex items-center justify-center"
+                {/* Bidding Controls */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, mb: 2 }}>
+                    {[10, 50, 100].map(inc => (
+                        <Button
+                            key={inc}
+                            variant="outlined"
+                            color="inherit"
+                            sx={{ color: 'white', borderColor: 'grey.700' }}
+                            onClick={() => handleBid(currentBid + inc)}
                         >
-                            BID
-                        </button>
-                    </div>
-                </div>
+                            +${inc}
+                        </Button>
+                    ))}
+                </Box>
+
+                <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Oferta Personalizada"
+                    value={customBid}
+                    onChange={(e) => setCustomBid(e.target.value)}
+                    type="number"
+                    size="small"
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography color="grey.400">$</Typography></InputAdornment>,
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="warning"
+                                    onClick={() => {
+                                        const val = parseInt(customBid);
+                                        if (val > currentBid) handleBid(val);
+                                    }}
+                                    disabled={!customBid || parseInt(customBid) <= currentBid}
+                                >
+                                    OFERTAR
+                                </Button>
+                            </InputAdornment>
+                        ),
+                        sx: { color: 'white', bgcolor: 'grey.900' }
+                    }}
+                />
 
                 {isWinning && (
-                    <div className="text-center text-green-400 text-sm font-bold animate-pulse">
-                        You are winning this auction!
-                    </div>
+                    <Typography
+                        align="center"
+                        variant="caption"
+                        sx={{ display: 'block', mt: 2, color: 'success.main', fontWeight: 'bold', animation: 'pulse 1s infinite' }}
+                    >
+                        ¡VAS GANANDO!
+                    </Typography>
                 )}
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }

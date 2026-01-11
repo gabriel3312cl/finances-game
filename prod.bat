@@ -1,9 +1,6 @@
 @echo off
 echo Starting Finances Game in PRODUCTION mode...
 
-echo Starting Database...
-docker compose up -d
-
 echo Building Backend...
 cd backend
 go build -o bin/server.exe cmd/api/main.go

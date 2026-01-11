@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/auth';
 import Link from 'next/link';
+import { Container, Box, Typography, TextField, Button, Paper, Alert, Link as MuiLink } from '@mui/material';
 
 export default function RegisterPage() {
     const [username, setUsername] = useState('');
@@ -23,10 +24,10 @@ export default function RegisterPage() {
             });
 
             if (!res.ok) {
-                throw new Error(await res.text() || 'Registration failed');
+                const text = await res.text();
+                throw new Error(text || 'Error en el registro');
             }
 
-            // Automatically redirect to login, or maybe auto-login in future
             router.push('/login');
         } catch (err: any) {
             setError(err.message);
@@ -34,77 +35,100 @@ export default function RegisterPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-900 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-black text-white">
-            <div className="w-full max-w-md p-8 space-y-8 bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700 shadow-2xl">
-                <div className="text-center">
-                    <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-400">
-                        Join the Elite
-                    </h2>
-                    <p className="mt-2 text-sm text-gray-400">Enter your access code to begin</p>
-                </div>
+        <Box
+            sx={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'radial-gradient(circle at top, #1f2937, #111827)',
+            }}
+        >
+            <Container maxWidth="xs">
+                <Paper
+                    elevation={10}
+                    sx={{
+                        p: 4,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        bgcolor: 'background.paper',
+                        borderRadius: 2,
+                    }}
+                >
+                    <Typography component="h1" variant="h4" sx={{ mb: 1, fontWeight: 'bold', background: 'linear-gradient(45deg, #c084fc, #f472b6)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        Únete a la Élite
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Ingresa tu código de acceso para comenzar
+                    </Typography>
 
-                <form className="mt-8 space-y-6" onSubmit={handleRegister}>
-                    <div className="space-y-4">
-                        <div>
-                            <label htmlFor="username" className="sr-only">Username</label>
-                            <input
-                                id="username"
-                                name="username"
-                                type="text"
-                                required
-                                className="appearance-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-500 text-gray-100 rounded-lg bg-gray-700/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:z-10 sm:text-sm transition-all"
-                                placeholder="Username"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="password" className="sr-only">Password</label>
-                            <input
-                                id="password"
-                                name="password"
-                                type="password"
-                                required
-                                className="appearance-none relative block w-full px-3 py-3 border border-gray-600 placeholder-gray-500 text-gray-100 rounded-lg bg-gray-700/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:z-10 sm:text-sm transition-all"
-                                placeholder="Password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="specialCode" className="sr-only">Access Code</label>
-                            <input
-                                id="specialCode"
-                                name="specialCode"
-                                type="text"
-                                required
-                                className="appearance-none relative block w-full px-3 py-3 border border-yellow-600/50 placeholder-yellow-600/70 text-yellow-100 rounded-lg bg-yellow-900/10 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 focus:z-10 sm:text-sm transition-all text-center tracking-widest uppercase font-mono"
-                                placeholder="ACCESS CODE"
-                                value={specialCode}
-                                onChange={(e) => setSpecialCode(e.target.value)}
-                            />
-                        </div>
-                    </div>
+                    <Box component="form" onSubmit={handleRegister} sx={{ mt: 1, width: '100%' }}>
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            id="username"
+                            label="Nombre de Usuario"
+                            name="username"
+                            autoComplete="username"
+                            autoFocus
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            name="password"
+                            label="Contraseña"
+                            type="password"
+                            id="password"
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                        <TextField
+                            margin="normal"
+                            required
+                            fullWidth
+                            name="specialCode"
+                            label="CÓDIGO DE ACCESO"
+                            id="specialCode"
+                            value={specialCode}
+                            onChange={(e) => setSpecialCode(e.target.value)}
+                            sx={{
+                                '& .MuiInputBase-input': { textAlign: 'center', letterSpacing: 3, textTransform: 'uppercase' },
+                                '& .MuiOutlinedInput-root': {
+                                    '& fieldset': { borderColor: '#d97706' }, // amber-600
+                                    '&:hover fieldset': { borderColor: '#f59e0b' }, // amber-500
+                                },
+                            }}
+                        />
 
-                    {error && <div className="text-red-400 text-sm text-center">{error}</div>}
+                        {error && (
+                            <Alert severity="error" sx={{ mt: 2 }}>
+                                {error}
+                            </Alert>
+                        )}
 
-                    <div>
-                        <button
+                        <Button
                             type="submit"
-                            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transform hover:scale-[1.02] transition-all duration-200 shadow-lg shadow-purple-500/20"
+                            fullWidth
+                            variant="contained"
+                            sx={{ mt: 3, mb: 2, bgcolor: '#9333ea', '&:hover': { bgcolor: '#7e22ce' } }} // purple
                         >
-                            Create Account
-                        </button>
-                    </div>
-                </form>
+                            Crear Cuenta
+                        </Button>
 
-                <div className="text-center text-sm">
-                    <span className="text-gray-400">Already have an account? </span>
-                    <Link href="/login" className="font-medium text-purple-400 hover:text-purple-300 transition-colors">
-                        Sign in here
-                    </Link>
-                </div>
-            </div>
-        </div>
+                        <Box sx={{ textAlign: 'center' }}>
+                            <MuiLink component={Link} href="/login" variant="body2" color="secondary" sx={{ cursor: 'pointer' }}>
+                                {"¿Ya tienes cuenta? Inicia sesión aquí"}
+                            </MuiLink>
+                        </Box>
+                    </Box>
+                </Paper>
+            </Container>
+        </Box>
     );
 }

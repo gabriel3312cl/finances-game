@@ -5,14 +5,29 @@ type GameState struct {
 	Players           []*PlayerState    `json:"players"`
 	Board             []Tile            `json:"board"`
 	CurrentTurnID     string            `json:"current_turn_id"` // UserID
-	Status            string            `json:"status"`          // WAITING, PLAYING, ENDED
+	Status            string            `json:"status"`          // WAITING, ROLLING_ORDER, ACTIVE, FINISHED
 	Dice              [2]int            `json:"dice"`
 	LastAction        string            `json:"last_action"` // Log description
 	ActiveAuction     *AuctionState     `json:"active_auction,omitempty"`
 	ActiveTrade       *TradeOffer       `json:"active_trade,omitempty"`
 	PropertyOwnership map[string]string `json:"property_ownership"` // PropertyID -> OwnerUserID
 	TileVisits        map[int]int       `json:"tile_visits"`        // TileIndex -> VisitCount
+	Logs              []EventLog        `json:"logs"`
+	TurnOrder         []string          `json:"turn_order"` // UserIDs in order
 }
+
+type EventLog struct {
+	Timestamp int64  `json:"timestamp"`
+	Message   string `json:"message"`
+	Type      string `json:"type"` // INFO, ACTION, ALERT, DICE
+}
+
+const (
+	GameStatusWaiting      = "WAITING"
+	GameStatusRollingOrder = "ROLLING_ORDER"
+	GameStatusActive       = "ACTIVE"
+	GameStatusFinished     = "FINISHED"
+)
 
 type TradeOffer struct {
 	ID                string   `json:"id"`
@@ -42,11 +57,14 @@ type Tile struct {
 	ID              int     `json:"id"`
 	Type            string  `json:"type"` // PROPERTY, CHANCE, TAX, CORNER, UTILITY, RAILROAD
 	Name            string  `json:"name"`
+	PropertyID      string  `json:"property_id,omitempty"` // UUID
 	OwnerID         *string `json:"owner_id,omitempty"`
 	Price           int     `json:"price,omitempty"`
 	Rent            int     `json:"rent,omitempty"`
 	GroupIdentifier string  `json:"group_identifier,omitempty"` // Color or Group ID
-	BuildingCount   int     `json:"building_count"`             // 0-4 houses, 5 = hotel
+	GroupName       string  `json:"group_name,omitempty"`
+	GroupColor      string  `json:"group_color,omitempty"`
+	BuildingCount   int     `json:"building_count"` // 0-4 houses, 5 = hotel
 	IsMortgaged     bool    `json:"is_mortgaged"`
 }
 
