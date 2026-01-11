@@ -7,8 +7,10 @@ interface GamePageProps {
     params: Promise<{ id: string }>
 }
 
-export default async function GamePage({ params }: GamePageProps) {
-    const { id } = await params;
+import { use } from 'react';
+
+export default function GamePage({ params }: GamePageProps) {
+    const { id } = use(params);
     return (
         // We need a wrapper component to use useGame inside GameProvider
         <GameProvider>

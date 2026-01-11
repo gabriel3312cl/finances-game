@@ -59,11 +59,13 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 
 	code := generateGameCode()
 	game := &domain.GameState{
-		GameID:        code,
-		Status:        "WAITING",
-		Board:         initializeBoard(),
-		Players:       []*domain.PlayerState{},
-		CurrentTurnID: host.ID, // Host starts? Or random.
+		GameID:            code,
+		Status:            "WAITING",
+		Board:             initializeBoard(),
+		Players:           []*domain.PlayerState{},
+		PropertyOwnership: make(map[string]string),
+		TileVisits:        make(map[int]int),
+		CurrentTurnID:     host.ID, // Host starts? Or random.
 	}
 
 	// Add Host
