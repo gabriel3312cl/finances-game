@@ -24,10 +24,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Games Table
 CREATE TABLE IF NOT EXISTS games (
-    id VARCHAR(50) PRIMARY KEY, -- Widened to 50 just in case
-    code VARCHAR(10), -- Widened
+    id VARCHAR(255) PRIMARY KEY, -- Widened to 255
+    code VARCHAR(50), -- Widened
     host_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    state VARCHAR(50) DEFAULT 'WAITING', -- Widened
+    state VARCHAR(50) DEFAULT 'WAITING',
     active BOOLEAN DEFAULT TRUE,
     current_turn_player_id UUID,
     settings JSONB DEFAULT '{}',
@@ -39,9 +39,9 @@ CREATE TABLE IF NOT EXISTS games (
 -- Game Players (Session Participants)
 CREATE TABLE IF NOT EXISTS game_players (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    game_id VARCHAR(50) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
+    game_id VARCHAR(255) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    token_color VARCHAR(255), -- Widened for complex CSS strings
+    token_color TEXT, -- Unlimited length for CSS
     balance BIGINT DEFAULT 1500,
     position INT DEFAULT 0,
     is_active BOOLEAN DEFAULT FALSE,
@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS game_players (
 -- Properties State (Per Game)
 CREATE TABLE IF NOT EXISTS game_properties (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    game_id VARCHAR(50) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
-    property_id VARCHAR(50) NOT NULL,
+    game_id VARCHAR(255) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
+    property_id VARCHAR(255) NOT NULL, -- Widened
     owner_id UUID REFERENCES game_players(id) ON DELETE SET NULL,
     mortgaged BOOLEAN DEFAULT FALSE,
     houses INT DEFAULT 0,
@@ -66,9 +66,9 @@ CREATE TABLE IF NOT EXISTS game_properties (
 -- Audit/History Logs
 CREATE TABLE IF NOT EXISTS game_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    game_id VARCHAR(50) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
+    game_id VARCHAR(255) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
     player_id UUID REFERENCES game_players(id) ON DELETE CASCADE,
-    action_type VARCHAR(50) NOT NULL,
+    action_type VARCHAR(255) NOT NULL,
     details JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS game_history (
 -- Loans Table
 CREATE TABLE IF NOT EXISTS loans (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    game_id VARCHAR(50) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
+    game_id VARCHAR(255) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
     lender_id UUID REFERENCES game_players(id) ON DELETE CASCADE,
     borrower_id UUID REFERENCES game_players(id) ON DELETE CASCADE,
     principal_amount BIGINT NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS loans (
     installments_paid INT DEFAULT 0,
     amount_per_installment BIGINT NOT NULL,
     next_payment_due TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(20) DEFAULT 'ACTIVE', -- ACTIVE, PAID, DEFAULTED
+    status VARCHAR(50) DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
