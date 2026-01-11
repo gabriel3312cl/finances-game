@@ -4,14 +4,15 @@ import { GameProvider, useGame } from '@/context/GameContext';
 import GameBoard from '@/components/game/GameBoard';
 
 interface GamePageProps {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
-export default function GamePage({ params }: GamePageProps) {
+export default async function GamePage({ params }: GamePageProps) {
+    const { id } = await params;
     return (
         // We need a wrapper component to use useGame inside GameProvider
         <GameProvider>
-            <GameWrapper gameId={params.id} />
+            <GameWrapper gameId={id} />
         </GameProvider>
     );
 }

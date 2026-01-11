@@ -20,7 +20,7 @@ export default function TradeModal({ gameState, user, sendMessage }: TradeModalP
     const isIncomingTrade = activeTrade && activeTrade.target_id === user.user_id;
 
     // Filter properties owned by user and potential targets
-    const myProperties = boardTiles.filter(t => t.propertyId && gameState.property_ownership?.[t.propertyId] === user.user_id);
+    const myProperties = boardTiles.filter(t => t.propertyId && gameState?.property_ownership?.[t.propertyId] === user.user_id);
 
     // Get list of other players
     const otherPlayers = gameState.players?.filter((p: any) => p.user_id !== user.user_id) || [];
