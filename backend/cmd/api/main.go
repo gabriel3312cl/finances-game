@@ -48,7 +48,7 @@ func main() {
 	go hub.Run()
 
 	// Game Service (In-memory for now)
-	gameService := service.NewGameService(hub)
+	gameService := service.NewGameService(hub, db)
 
 	// Router
 	mux := http.NewServeMux()

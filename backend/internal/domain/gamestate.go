@@ -1,14 +1,15 @@
 package domain
 
 type GameState struct {
-	GameID        string         `json:"game_id"`
-	Players       []*PlayerState `json:"players"`
-	Board         []Tile         `json:"board"`
-	CurrentTurnID string         `json:"current_turn_id"` // UserID
-	Status        string         `json:"status"`          // WAITING, PLAYING, ENDED
-	Dice          [2]int         `json:"dice"`
-	LastAction    string         `json:"last_action"` // Log description
-	ActiveAuction *AuctionState  `json:"active_auction,omitempty"`
+	GameID            string            `json:"game_id"`
+	Players           []*PlayerState    `json:"players"`
+	Board             []Tile            `json:"board"`
+	CurrentTurnID     string            `json:"current_turn_id"` // UserID
+	Status            string            `json:"status"`          // WAITING, PLAYING, ENDED
+	Dice              [2]int            `json:"dice"`
+	LastAction        string            `json:"last_action"` // Log description
+	ActiveAuction     *AuctionState     `json:"active_auction,omitempty"`
+	PropertyOwnership map[string]string `json:"property_ownership"` // PropertyID -> OwnerUserID
 }
 
 type PlayerState struct {

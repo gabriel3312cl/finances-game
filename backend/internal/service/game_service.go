@@ -1,10 +1,12 @@
 package service
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,18 +15,42 @@ import (
 )
 
 type GameService struct {
-	games  map[string]*domain.GameState // In-memory state for active games
-	mu     sync.RWMutex
-	hub    *websocket.Hub
-	active map[string]bool
+	games      map[string]*domain.GameState
+	properties map[string]domain.Property // Cache
+	db         *sql.DB
+	mu         sync.RWMutex
+	hub        *websocket.Hub
+	active     map[string]bool
 }
 
-func NewGameService(hub *websocket.Hub) *GameService {
-	return &GameService{
-		games:  make(map[string]*domain.GameState),
-		hub:    hub,
-		active: make(map[string]bool),
+func NewGameService(hub *websocket.Hub, db *sql.DB) *GameService {
+	s := &GameService{
+		games:      make(map[string]*domain.GameState),
+		properties: make(map[string]domain.Property),
+		db:         db,
+		hub:        hub,
+		active:     make(map[string]bool),
 	}
+	s.loadProperties()
+	return s
+}
+
+func (s *GameService) loadProperties() {
+	rows, err := s.db.Query("SELECT id, name, type, price, rent_base FROM properties")
+	if err != nil {
+		log.Printf("Error loading properties: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p domain.Property
+		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Price, &p.RentBase); err != nil {
+			continue
+		}
+		s.properties[p.ID] = p
+	}
+	log.Printf("Loaded %d properties", len(s.properties))
 }
 
 func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
@@ -112,6 +138,8 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleStartAuction(game, userID, action.Payload)
 	case "BID":
 		s.handleBid(game, userID, action.Payload)
+	case "BUY_PROPERTY":
+		s.handleBuyProperty(game, userID, action.Payload)
 	}
 }
 
@@ -196,20 +224,12 @@ func (s *GameService) endAuction(game *domain.GameState) {
 
 	winnerID := game.ActiveAuction.BidderID
 	amount := int64(game.ActiveAuction.HighestBid)
-	// propID := game.ActiveAuction.PropertyID
 
 	if winnerID != "" {
 		// Deduct Balance & Assign Property
 		for _, p := range game.Players {
 			if p.UserID == winnerID {
 				p.Balance -= int(amount)
-				// Assign property (naive implementation: just strictly owned)
-				// ideally we have a ownership map.
-				// For now let's just log it. Real property ownership needs GameProperties table or map in GameState.
-				// We don't have Property Ownership in GameState yet!
-				// TODO: Add Ownership to GameState. For now, rely on Players Inventory if we had one.
-				// Let's add simple inventory to PlayerState or global Ownership map?
-				// To keep it simple, we won't implement full ownership logic in this step, just the Auction flow.
 				break
 			}
 		}
@@ -219,6 +239,49 @@ func (s *GameService) endAuction(game *domain.GameState) {
 	}
 
 	game.ActiveAuction = nil
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, payload json.RawMessage) {
+	// 1. Validate
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	prop, exists := s.properties[req.PropertyID]
+	if !exists {
+		return
+	}
+
+	// Check if owned
+	if _, owned := game.PropertyOwnership[req.PropertyID]; owned {
+		return // Already owned
+	}
+
+	// Check Player
+	var player *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			player = p
+			break
+		}
+	}
+	if player == nil || player.Balance < int(prop.Price) {
+		return // Insufficient funds
+	}
+
+	// 2. Execute Purchase
+	player.Balance -= int(prop.Price)
+	game.PropertyOwnership[req.PropertyID] = userID
+	game.LastAction = player.Name + " bought " + prop.Name + " for $" + strconv.Itoa(prop.Price) // Fix string cast
+
+	// 3. Update Board UI (optional, if Board stores ownership too)
+	// We need to map PropertyID to Tile Index if we want to show it on board array
+	// For now, Frontend can look up PropertyOwnership map.
+
 	s.broadcastGameState(game)
 }
 
@@ -247,7 +310,47 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 	if currentPlayer != nil {
 		newPos := (currentPlayer.Position + total) % 64
 		currentPlayer.Position = newPos
-		game.LastAction = currentPlayer.Name + " rolled " + string(total)
+
+		// Check Tile
+		tileID := getLayoutID(newPos)
+		prop, isProperty := s.properties[tileID]
+
+		desc := currentPlayer.Name + " rolled " + strconv.Itoa(total) // Fix int to str
+
+		if isProperty {
+			ownerID, isOwned := game.PropertyOwnership[tileID]
+			if isOwned {
+				if ownerID != userID {
+					// PAY RENT
+					rent := prop.RentBase // Base rent for now
+					// Find Owner
+					var owner *domain.PlayerState
+					for _, op := range game.Players {
+						if op.UserID == ownerID {
+							owner = op
+							break
+						}
+					}
+
+					if owner != nil {
+						// Transfer
+						actualPay := rent
+						if currentPlayer.Balance < rent {
+							actualPay = currentPlayer.Balance // Bankruptcy logic later
+						}
+						currentPlayer.Balance -= actualPay
+						owner.Balance += actualPay
+						desc += ". Landed on " + prop.Name + " (Owned by " + owner.Name + "). Paid $" + strconv.Itoa(actualPay)
+					}
+				} else {
+					desc += ". Landed on own property."
+				}
+			} else {
+				desc += ". Landed on Unowned " + prop.Name
+			}
+		}
+
+		game.LastAction = desc
 	}
 
 	// 4. Next Turn (Round Robin)
@@ -302,4 +405,21 @@ func initializeBoard() []domain.Tile {
 		}
 	}
 	return tiles
+}
+
+func getLayoutID(index int) string {
+	layout := []string{
+		"GO", // 0
+		"1.1.1", "COMMUNITY_CHEST", "1.1.2", "1.1.3", "TAX_INCOME", "1.2.1", "4.1", "2.1", "1.2.2", "1.2.3", "5.1", "1.3.1", "CHANCE", "1.3.2", "1.3.3",
+		"JAIL", // 16
+		"1.4.1", "3.1", "1.4.2", "1.4.3", "4.2", "1.5.1", "1.5.2", "2.2", "5.2", "1.5.3", "COMMUNITY_CHEST", "1.6.1", "1.6.2", "3.2", "1.6.3",
+		"FREE_PARKING", // 32
+		"1.7.1", "3.3", "CHANCE", "1.7.2", "1.7.3", "4.3", "1.8.1", "2.3", "1.8.2", "1.8.3", "5.3", "1.9.1", "1.9.2", "3.4", "1.9.3",
+		"GO_TO_JAIL", // 48
+		"1.10.1", "1.10.2", "3.5", "COMMUNITY_CHEST", "1.10.3", "4.4", "1.11.1", "2.4", "3.6", "1.11.2", "1.11.3", "CHANCE", "1.12.1", "TAX_LUXURY", "1.12.2",
+	}
+	if index >= 0 && index < len(layout) {
+		return layout[index]
+	}
+	return ""
 }

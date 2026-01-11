@@ -43,10 +43,41 @@ export default function GameBoard() {
                                 */}
                                 <BoardTile tile={tile} index={i} />
 
-                                {/* Overlay Players if any. We need to position them 'on top' of the tile.
-                                    Since BoardTile is a div at grid (r,c), we can use React Portals or just have BoardTile render them.
-                                    Let's modify BoardTile to accept Children.
-                                */}
+                                {/* Ownership Indicator */}
+                                {(() => {
+                                    if (!tile.propertyId || !gameState?.property_ownership) return null;
+                                    const ownerID = gameState.property_ownership[tile.propertyId];
+                                    if (ownerID) {
+                                        const owner = gameState.players.find((p: any) => p.user_id === ownerID);
+                                        const colorMap: Record<string, string> = {
+                                            'RED': 'border-red-500 bg-red-500/20',
+                                            'BLUE': 'border-blue-500 bg-blue-500/20',
+                                            'GREEN': 'border-green-500 bg-green-500/20',
+                                            'YELLOW': 'border-yellow-500 bg-yellow-500/20',
+                                            'PURPLE': 'border-purple-500 bg-purple-500/20',
+                                            'ORANGE': 'border-orange-500 bg-orange-500/20',
+                                            'CYAN': 'border-cyan-500 bg-cyan-500/20',
+                                            'PINK': 'border-pink-500 bg-pink-500/20',
+                                        };
+                                        const colorClass = colorMap[owner?.token_color] || 'border-white';
+
+                                        // Position overlay locally on the tile (BoardTile determines grid area, but we can't easily hook into it from outside if BoardTile is just a component)
+                                        // Wait, BoardTile returns a div with grid-row/col.
+                                        // We need to wrap BoardTile or be inside the grid cell. 
+                                        // BoardTile uses getGridPosition inside? No, passed prop? 
+                                        // Let's check BoardTile source.
+                                        // Assuming BoardTile renders at grid position.
+                                        // We can render a DIV at same grid position.
+                                        const { row, col } = getGridPosition(i);
+                                        return (
+                                            <div
+                                                className={`pointer-events-none absolute inset-0 z-10 border-4 border-dashed rounded-lg ${colorClass}`}
+                                                style={{ gridRow: row, gridColumn: col }}
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </div>
                         );
                     })}
@@ -114,6 +145,28 @@ export default function GameBoard() {
                                     >
                                         ROLL DICE
                                     </button>
+
+                                    {(() => {
+                                        // Property Buy Logic
+                                        const currentPlayer = gameState?.players?.find((p: any) => p.user_id === user?.user_id);
+                                        if (currentPlayer) {
+                                            const currentTile = boardTiles[currentPlayer.position];
+                                            if (currentTile && currentTile.propertyId) {
+                                                const ownerID = gameState?.property_ownership?.[currentTile.propertyId];
+                                                if (!ownerID) {
+                                                    return (
+                                                        <button
+                                                            onClick={() => sendMessage('BUY_PROPERTY', { property_id: currentTile.propertyId })}
+                                                            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-400 hover:to-cyan-500 text-white font-bold rounded-full shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-all text-xl block w-full"
+                                                        >
+                                                            BUY {currentTile.name} (${currentTile.price})
+                                                        </button>
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        return null;
+                                    })()}
 
                                     {/* Test Auction Button (Dev only) */}
                                     <button
