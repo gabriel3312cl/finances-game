@@ -140,6 +140,10 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleBid(game, userID, action.Payload)
 	case "BUY_PROPERTY":
 		s.handleBuyProperty(game, userID, action.Payload)
+	case "TAKE_LOAN":
+		s.handleTakeLoan(game, userID, action.Payload)
+	case "PAY_LOAN":
+		s.handlePayLoan(game, userID, action.Payload)
 	}
 }
 
@@ -282,6 +286,63 @@ func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, p
 	// We need to map PropertyID to Tile Index if we want to show it on board array
 	// For now, Frontend can look up PropertyOwnership map.
 
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleTakeLoan(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		Amount int `json:"amount"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	if req.Amount <= 0 {
+		return
+	}
+
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			// Limit Check (Simple cap of 5000 for now)
+			if p.Loan+req.Amount > 5000 {
+				return
+			}
+			p.Balance += int(req.Amount)
+			p.Loan += req.Amount
+			game.LastAction = p.Name + " took a loan of $" + strconv.Itoa(req.Amount)
+			break
+		}
+	}
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handlePayLoan(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		Amount int `json:"amount"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	if req.Amount <= 0 {
+		return
+	}
+
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			if p.Loan < req.Amount {
+				return // Cannot pay more than owed
+			}
+			if p.Balance < int(req.Amount) {
+				return // Insufficient funds
+			}
+
+			p.Balance -= int(req.Amount)
+			p.Loan -= req.Amount
+			game.LastAction = p.Name + " repaid loan: $" + strconv.Itoa(req.Amount)
+			break
+		}
+	}
 	s.broadcastGameState(game)
 }
 

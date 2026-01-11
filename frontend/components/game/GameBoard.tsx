@@ -194,6 +194,7 @@ export default function GameBoard() {
                 onClose={() => setIsInventoryOpen(false)}
                 gameState={gameState}
                 user={user}
+                sendMessage={sendMessage}
             />
 
             {/* Floating Action Button for Inventory */}

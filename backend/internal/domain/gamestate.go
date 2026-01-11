@@ -20,6 +20,7 @@ type PlayerState struct {
 	Position   int    `json:"position"` // 0-63 (assuming 17x17 board loop)
 	InJail     bool   `json:"in_jail"`
 	IsActive   bool   `json:"is_active"`
+	Loan       int    `json:"loan"`
 }
 
 type Tile struct {
