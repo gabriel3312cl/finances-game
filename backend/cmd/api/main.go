@@ -62,6 +62,11 @@ func main() {
 	mux.HandleFunc("/me", handler.AuthMiddleware(authHandler.Me))
 	mux.HandleFunc("/delete-account", handler.AuthMiddleware(authHandler.Delete))
 
+	// Game Routes
+	gameHandler := handler.NewGameHandler(gameService)
+	mux.HandleFunc("/games/create", handler.AuthMiddleware(gameHandler.CreateGame))
+	mux.HandleFunc("/games/join", handler.AuthMiddleware(gameHandler.JoinGame))
+
 	// WebSocket Route
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		websocket.ServeWs(hub, w, r, gameService)

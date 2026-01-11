@@ -5,7 +5,8 @@ import { fetchWithAuth, removeToken } from '@/lib/auth';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const [user, setUser] = useState<{ user_id: string } | null>(null);
+    const [user, setUser] = useState<{ user_id: string; username: string } | null>(null);
+    const [joinCode, setJoinCode] = useState('');
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -20,11 +21,48 @@ export default function DashboardPage() {
             }
         };
         checkAuth();
-    }, []); // Corrected dependency array
+    }, []);
 
     const handleLogout = () => {
         removeToken();
         router.push('/login');
+    };
+
+    const handleCreateGame = async () => {
+        try {
+            const res = await fetchWithAuth('/games/create', { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                router.push(`/game/${data.game_id}`); // Use internal ID for URL? Or Code? usually ID.
+            } else {
+                alert('Failed to create game');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error creating game');
+        }
+    };
+
+    const handleJoinGame = async () => {
+        if (!joinCode) return;
+        try {
+            const res = await fetchWithAuth('/games/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: joinCode.toUpperCase() })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                router.push(`/game/${data.game_id}`);
+            } else {
+                const err = await res.json();
+                alert(err.message || 'Failed to join game');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error joining game');
+        }
     };
 
     const handleDeleteAccount = async () => {
@@ -52,7 +90,13 @@ export default function DashboardPage() {
                             </span>
                         </div>
                         <div className="flex items-center space-x-4">
-                            <span className="text-sm text-gray-400">Logged in as {user?.user_id}</span>
+                            <span className="text-sm text-gray-400">Logged in as {user?.username || user?.user_id}</span>
+                            <button
+                                className="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+                                onClick={() => alert('Profile editing coming soon!')}
+                            >
+                                Edit Profile
+                            </button>
                             <button
                                 onClick={handleLogout}
                                 className="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
@@ -67,11 +111,11 @@ export default function DashboardPage() {
             <main className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Create Session Card */}
-                    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-amber-500/50 transition-colors group cursor-pointer relative overflow-hidden">
+                    <div onClick={handleCreateGame} className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-amber-500/50 transition-colors group cursor-pointer relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         <h3 className="text-2xl font-bold text-amber-400 mb-2">Create New Session</h3>
                         <p className="text-gray-400 mb-6">Host a new game and become the tycoon.</p>
-                        <button className="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-lg text-white font-semibold shadow-lg shadow-amber-500/20 transition-all">
+                        <button onClick={(e) => { e.stopPropagation(); handleCreateGame(); }} className="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-lg text-white font-semibold shadow-lg shadow-amber-500/20 transition-all">
                             Create Game
                         </button>
                     </div>
@@ -81,13 +125,15 @@ export default function DashboardPage() {
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         <h3 className="text-2xl font-bold text-blue-400 mb-2">Join Session</h3>
                         <p className="text-gray-400 mb-6">Enter a code to join an existing lobby.</p>
-                        <div className="flex space-x-2">
+                        <div className="flex space-x-2 relative z-10">
                             <input
                                 type="text"
                                 placeholder="CODE"
+                                value={joinCode}
+                                onChange={(e) => setJoinCode(e.target.value)}
                                 className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 text-white focus:ring-2 focus:ring-blue-500 outline-none uppercase tracking-widest"
                             />
-                            <button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-semibold shadow-lg shadow-blue-500/20 transition-all">
+                            <button onClick={handleJoinGame} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-semibold shadow-lg shadow-blue-500/20 transition-all">
                                 Join
                             </button>
                         </div>
