@@ -9,7 +9,21 @@ type GameState struct {
 	Dice              [2]int            `json:"dice"`
 	LastAction        string            `json:"last_action"` // Log description
 	ActiveAuction     *AuctionState     `json:"active_auction,omitempty"`
+	ActiveTrade       *TradeOffer       `json:"active_trade,omitempty"`
 	PropertyOwnership map[string]string `json:"property_ownership"` // PropertyID -> OwnerUserID
+}
+
+type TradeOffer struct {
+	ID                string   `json:"id"`
+	OffererID         string   `json:"offerer_id"`
+	OffererName       string   `json:"offerer_name"`
+	TargetID          string   `json:"target_id"`
+	TargetName        string   `json:"target_name"`
+	OfferPropeties    []string `json:"offer_properties"`
+	OfferCash         int      `json:"offer_cash"`
+	RequestProperties []string `json:"request_properties"`
+	RequestCash       int      `json:"request_cash"`
+	Status            string   `json:"status"` // PENDING, ACCEPTED, REJECTED
 }
 
 type PlayerState struct {

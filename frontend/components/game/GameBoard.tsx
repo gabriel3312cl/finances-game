@@ -8,6 +8,7 @@ import PlayerToken from './PlayerToken';
 import Link from 'next/link';
 import AuctionModal from './AuctionModal';
 import InventoryDrawer from './InventoryDrawer';
+import TradeModal from './TradeModal';
 import { useState } from 'react';
 
 export default function GameBoard() {
@@ -188,6 +189,7 @@ export default function GameBoard() {
 
             {/* Global Modals */}
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
+            <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
 
             <InventoryDrawer
                 isOpen={isInventoryOpen}

@@ -144,6 +144,12 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleTakeLoan(game, userID, action.Payload)
 	case "PAY_LOAN":
 		s.handlePayLoan(game, userID, action.Payload)
+	case "INITIATE_TRADE":
+		s.handleInitiateTrade(game, userID, action.Payload)
+	case "ACCEPT_TRADE":
+		s.handleAcceptTrade(game, userID, action.Payload)
+	case "REJECT_TRADE":
+		s.handleRejectTrade(game, userID, action.Payload)
 	}
 }
 
@@ -286,6 +292,121 @@ func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, p
 	// We need to map PropertyID to Tile Index if we want to show it on board array
 	// For now, Frontend can look up PropertyOwnership map.
 
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleInitiateTrade(game *domain.GameState, userID string, payload json.RawMessage) {
+	// Only one trade at a time to keep it simple
+	if game.ActiveTrade != nil {
+		return
+	}
+
+	var req domain.TradeOffer
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	// Basic Validation
+	if req.TargetID == "" || req.TargetID == userID {
+		return
+	}
+
+	// Fill names
+	var offererName, targetName string
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			offererName = p.Name
+		}
+		if p.UserID == req.TargetID {
+			targetName = p.Name
+		}
+	}
+
+	game.ActiveTrade = &domain.TradeOffer{
+		ID:                strconv.Itoa(int(time.Now().Unix())),
+		OffererID:         userID,
+		OffererName:       offererName,
+		TargetID:          req.TargetID,
+		TargetName:        targetName,
+		OfferPropeties:    req.OfferPropeties,
+		OfferCash:         req.OfferCash,
+		RequestProperties: req.RequestProperties,
+		RequestCash:       req.RequestCash,
+		Status:            "PENDING",
+	}
+
+	game.LastAction = offererName + " proposed a trade to " + targetName
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleAcceptTrade(game *domain.GameState, userID string, payload json.RawMessage) {
+	if game.ActiveTrade == nil || game.ActiveTrade.TargetID != userID {
+		return
+	}
+
+	trade := game.ActiveTrade
+
+	// Execute Swap
+	// 1. Money Transfer
+	var offerer, target *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == trade.OffererID {
+			offerer = p
+		}
+		if p.UserID == trade.TargetID {
+			target = p
+		}
+	}
+
+	if offerer == nil || target == nil {
+		game.ActiveTrade = nil
+		return
+	}
+
+	// Verify Cash funds
+	if offerer.Balance < int(trade.OfferCash) || target.Balance < int(trade.RequestCash) {
+		game.LastAction = "Trade failed: Insufficient funds"
+		game.ActiveTrade = nil
+		s.broadcastGameState(game)
+		return
+	}
+
+	// Transfer Cash
+	offerer.Balance -= int(trade.OfferCash)
+	target.Balance += int(trade.OfferCash)
+
+	target.Balance -= int(trade.RequestCash)
+	offerer.Balance += int(trade.RequestCash)
+
+	// 2. Property Transfer
+	// TODO: Verify ownership again for safety? Assuming UI is correct for now.
+	for _, propID := range trade.OfferPropeties {
+		if game.PropertyOwnership[propID] == trade.OffererID {
+			game.PropertyOwnership[propID] = trade.TargetID
+		}
+	}
+	for _, propID := range trade.RequestProperties {
+		if game.PropertyOwnership[propID] == trade.TargetID {
+			game.PropertyOwnership[propID] = trade.OffererID
+		}
+	}
+
+	game.LastAction = "Trade accepted between " + trade.OffererName + " and " + trade.TargetName
+	game.ActiveTrade = nil
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleRejectTrade(game *domain.GameState, userID string, payload json.RawMessage) {
+	if game.ActiveTrade == nil {
+		return
+	}
+	// Only Target or Offerer can cancel/reject
+	if userID != game.ActiveTrade.TargetID && userID != game.ActiveTrade.OffererID {
+		return
+	}
+
+	game.LastAction = "Trade cancelled/rejected"
+	game.ActiveTrade = nil
 	s.broadcastGameState(game)
 }
 
