@@ -18,6 +18,7 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			log.Println("Auth failed: Missing Authorization Header")
 			http.Error(w, "Missing Authorization Header", http.StatusUnauthorized)
 			return
 		}
@@ -33,14 +34,17 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		})
 
 		if err != nil || !token.Valid {
+			log.Printf("Auth failed: Invalid Token. Err: %v", err)
 			http.Error(w, "Invalid Token", http.StatusUnauthorized)
 			return
 		}
 
 		if claims, ok := token.Claims.(*domain.AuthClaims); ok && token.Valid {
 			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
+			ctx = context.WithValue(ctx, "username", claims.Username)
 			next(w, r.WithContext(ctx))
 		} else {
+			log.Println("Auth failed: Invalid Claims")
 			http.Error(w, "Invalid Token Claims", http.StatusUnauthorized)
 		}
 	}

@@ -24,10 +24,19 @@ func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, ok := r.Context().Value("user").(*domain.User)
+	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "Unauthorized: No UserID", http.StatusUnauthorized)
 		return
+	}
+	username, _ := r.Context().Value("username").(string)
+	if username == "" {
+		username = "Unknown"
+	}
+
+	user := &domain.User{
+		ID:       userID,
+		Username: username,
 	}
 
 	game, err := h.gameService.CreateGame(user)
@@ -57,10 +66,19 @@ func (h *GameHandler) JoinGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, ok := r.Context().Value("user").(*domain.User)
+	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "Unauthorized: No UserID", http.StatusUnauthorized)
 		return
+	}
+	username, _ := r.Context().Value("username").(string)
+	if username == "" {
+		username = "Unknown"
+	}
+
+	user := &domain.User{
+		ID:       userID,
+		Username: username,
 	}
 
 	game, err := h.gameService.JoinGame(req.Code, user)
