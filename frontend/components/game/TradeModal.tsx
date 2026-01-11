@@ -17,6 +17,9 @@ export default function TradeModal({ gameState, user, sendMessage }: TradeModalP
     const [requestCash, setRequestCash] = useState('');
 
     const activeTrade = gameState?.active_trade;
+
+    if (!user || !gameState) return null;
+
     const isIncomingTrade = activeTrade && activeTrade.target_id === user.user_id;
 
     // Filter properties owned by user and potential targets
