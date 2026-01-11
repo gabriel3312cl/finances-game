@@ -96,12 +96,27 @@ func (s *GameService) JoinGame(code string, user *domain.User) (*domain.GameStat
 		}
 	}
 
+	// Assign Random Color from available pool (simplified)
+	colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
+	assignedColor := "BLUE"
+	// Find unused color
+	usedColors := make(map[string]bool)
+	for _, p := range game.Players {
+		usedColors[p.TokenColor] = true
+	}
+	for _, c := range colors {
+		if !usedColors[c] {
+			assignedColor = c
+			break
+		}
+	}
+
 	game.Players = append(game.Players, &domain.PlayerState{
 		UserID:     user.ID,
 		Name:       user.Username,
 		Balance:    1500,
 		Position:   0,
-		TokenColor: "BLUE", // TODO: Dynamic colors
+		TokenColor: assignedColor,
 		IsActive:   true,
 	})
 
@@ -469,9 +484,10 @@ func (s *GameService) handlePayLoan(game *domain.GameState, userID string, paylo
 
 func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 	// 1. Verify Turn
+	// 1. Verify Turn
 	if game.CurrentTurnID != userID {
 		// Ignore if not their turn
-		// return
+		return
 	}
 
 	// 2. Roll Dice
