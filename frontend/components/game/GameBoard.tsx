@@ -7,9 +7,12 @@ import PlayerToken from './PlayerToken';
 
 import Link from 'next/link';
 import AuctionModal from './AuctionModal';
+import InventoryDrawer from './InventoryDrawer';
+import { useState } from 'react';
 
 export default function GameBoard() {
     const { gameState, sendMessage, user } = useGame();
+    const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
     const handleRollDice = () => {
         sendMessage('ROLL_DICE', {});
@@ -185,6 +188,25 @@ export default function GameBoard() {
 
             {/* Global Modals */}
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
+
+            <InventoryDrawer
+                isOpen={isInventoryOpen}
+                onClose={() => setIsInventoryOpen(false)}
+                gameState={gameState}
+                user={user}
+            />
+
+            {/* Floating Action Button for Inventory */}
+            <button
+                onClick={() => setIsInventoryOpen(true)}
+                className="fixed bottom-6 right-6 z-[60] bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-full shadow-2xl border border-gray-600 transition-all hover:scale-110 group"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-500 group-hover:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M2 10a4 4 0 014-4h2.08a2.4 2.4 0 011.92.96L11 8h5a1 1 0 011 1v7a1 1 0 01-1 1H6a4 4 0 01-4-4v-3zm3.293-2.707a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l5 5a1 1 0 01-1.414 1.414L15 10.414V18a2 2 0 01-2 2H6a2 2 0 01-2-2v-4.586l.293.293a1 1 0 01-1.414-1.414l5-5z" />
+                    {/* Simple Wallet Icon */}
+                    <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+            </button>
         </div>
     );
 }
