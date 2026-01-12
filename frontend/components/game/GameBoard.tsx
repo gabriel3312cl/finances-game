@@ -478,41 +478,7 @@ export default function GameBoard() {
                 </Box>
             </Box>
 
-            {/* Persistent Funds Display (Tablet/Mobile) */}
-            {(() => {
-                const me = gameState.players.find((p: any) => p.user_id === user.user_id);
-                if (me) {
-                    return (
-                        <Paper
-                            elevation={3}
-                            sx={{
-                                position: 'fixed',
-                                top: 16,
-                                left: '50%',
-                                transform: 'translateX(-50%)',
-                                zIndex: 100,
-                                px: 3,
-                                py: 1,
-                                borderRadius: 4,
-                                bgcolor: 'rgba(255, 255, 255, 0.9)',
-                                backdropFilter: 'blur(4px)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2,
-                                border: '2px solid',
-                                borderColor: 'primary.main'
-                            }}
-                        >
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="subtitle2" color="text.secondary" fontWeight="bold">TU EFECTIVO:</Typography>
-                                <Typography variant="h6" color="success.main" fontWeight="bold">
-                                    ${(me.balance || 0).toLocaleString()}
-                                </Typography>
-                            </Box>
-                        </Paper>
-                    );
-                }
-            })()}
+            {/* Persistent Funds Display (Tablet/Mobile) - REMOVED (Moved to Navbar) */}
 
             {/* LOG CONSOLE */}
             <Paper sx={{ height: 160, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
