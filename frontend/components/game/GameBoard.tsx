@@ -6,7 +6,7 @@ import { useGameStore } from '@/store/gameStore';
 import { useBoardConfig } from '@/hooks/useGameQueries';
 import PlayerToken from './PlayerToken';
 
-import AuctionModal from './AuctionModal';
+import CardModal from './CardModal';
 import InventoryDrawer from './InventoryDrawer';
 import TradeModal from './TradeModal';
 import TileDetailModal from './TileDetailModal';
@@ -64,6 +64,7 @@ export default function GameBoard() {
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
+    const [hiddenCardId, setHiddenCardId] = useState<number | null>(null);
 
     // ...
 
@@ -434,10 +435,30 @@ export default function GameBoard() {
                                                     // Also ensure it's a purchasable type
                                                     const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD';
                                                     const mustBuyOrAuction = isUnownedProperty && isPurchasable;
-                                                    const canEndTurn = !mustBuyOrAuction;
+
+                                                    // Card Logic
+                                                    const isCardTile = tile.type === 'CHANCE' || tile.type === 'COMMUNITY';
+                                                    const hasDrawn = !!gameState.drawn_card;
+                                                    const mustDraw = isCardTile && !hasDrawn;
+
+                                                    const canEndTurn = !mustBuyOrAuction && !mustDraw;
 
                                                     return (
                                                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                                            {/* Draw Card Button */}
+                                                            {mustDraw && (
+                                                                <Button
+                                                                    variant="contained"
+                                                                    color="secondary"
+                                                                    size="large"
+                                                                    startIcon={<Casino />}
+                                                                    onClick={() => sendMessage('DRAW_CARD', {})}
+                                                                    sx={{ px: 4, py: 1.5, borderRadius: 8, background: 'linear-gradient(45deg, #FF8E53 30%, #FE6B8B 90%)' }}
+                                                                >
+                                                                    SACAR TARJETA
+                                                                </Button>
+                                                            )}
+
                                                             {/* Action Buttons for Unowned Property */}
                                                             {mustBuyOrAuction && (
                                                                 <Stack direction="row" spacing={1}>
@@ -507,6 +528,15 @@ export default function GameBoard() {
             <InventoryDrawer isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} gameState={gameState} user={user} sendMessage={sendMessage} />
             <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
+
+            {gameState.drawn_card && gameState.drawn_card.id !== hiddenCardId && (
+                <CardModal
+                    gameState={gameState}
+                    user={user}
+                    sendMessage={sendMessage}
+                    onClose={() => setHiddenCardId(gameState.drawn_card.id)}
+                />
+            )}
 
             <TileDetailModal
                 tile={selectedTile}

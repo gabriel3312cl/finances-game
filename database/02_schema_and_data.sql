@@ -10,9 +10,53 @@ CREATE TABLE IF NOT EXISTS valid_codes (
     description VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Users Table
+-- Merged Game Cards Table
+CREATE TABLE IF NOT EXISTS game_cards (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(20) NOT NULL, -- 'CHANCE' or 'COMMUNITY'
+    title VARCHAR(100),       -- Optional title from user JSON
+    description TEXT NOT NULL,
+    effect TEXT NOT NULL      -- "move:GO", "pay:50", etc.
+);
+
+-- Seed Game Cards
+INSERT INTO game_cards (type, title, description, effect) VALUES
+-- CHANCE
+('CHANCE', 'Multa', 'Multa por exceso de velocidad (Paga 15m)', 'pay:15'),
+('CHANCE', 'Reparaciones', 'Haz reparaciones generales en todas tus propiedades: Paga 25m/casa, 100m/hotel', 'repair:25:100'),
+('CHANCE', 'Avanza Avenida', 'Avanza a Avenida Aleatoria (Si pasas Salida cobra 200m)', 'move:random_property'),
+('CHANCE', 'Avanza Transporte', 'Avanza al Transporte más cercano (Si tiene dueño paga doble)', 'move:nearest_railroad'),
+('CHANCE', 'Pase Gratis', 'Sal de la cárcel gratis', 'jail_free'),
+('CHANCE', 'Avanza Servicio', 'Avanza al Servicio más cercano (Si tiene dueño tira dados y paga 10x)', 'move:nearest_utility'),
+('CHANCE', 'Prestamo', 'Por cumplimiento de préstamo, cobra 150m', 'collect:150'),
+('CHANCE', 'Salida', 'Avanza hasta la Salida (Cobra 500m)', 'move:GO_BONUS'),
+('CHANCE', 'Presidente', 'Elegido Presidente del Consejo. Paga 50m a cada jugador', 'pay_all:50'),
+('CHANCE', 'Dividendos', 'El banco te paga un dividendo de 50m', 'collect:50'),
+('CHANCE', 'Retroceder', 'Retrocede 3 casillas', 'move:-3'),
+('CHANCE', 'Ultima Casilla', 'Avanza hasta la última casilla de propiedad', 'move:last_property'),
+('CHANCE', 'Carcel', 'Ve a la Cárcel', 'move:JAIL'),
+
+-- COMMUNITY CHEST
+('COMMUNITY', 'Seguro', 'Seguro de vida vence. Cobra 100m', 'collect:100'),
+('COMMUNITY', 'Salida', 'Avanza hasta la Salida (Cobra 200m)', 'move:GO'),
+('COMMUNITY', 'Gastos', 'Gastos escolares. Paga 50m', 'pay:50'),
+('COMMUNITY', 'Herencia', 'Herencia misteriosa. Cobra 100m', 'collect:100'),
+('COMMUNITY', 'Carcel', 'Ve a la Cárcel', 'move:JAIL'),
+('COMMUNITY', 'Adopcion', 'Adoptas un perrito. Paga 50m', 'pay:50'),
+('COMMUNITY', 'Facturas', 'Facturas de hospital. Paga 100m', 'pay:100'),
+('COMMUNITY', 'Pase Gratis', 'Sal de la cárcel gratis', 'jail_free'),
+('COMMUNITY', 'Reparaciones', 'Reparaciones viales: 40m/casa, 115m/hotel', 'repair:40:115'),
+('COMMUNITY', 'Error Bancario', 'Error bancario a tu favor. Cobra 200m', 'collect:200'),
+('COMMUNITY', 'Cumpleaños', 'Es tu cumpleaños. Cobra 10m de cada jugador', 'collect_all:10'),
+('COMMUNITY', 'Concurso', 'Segundo premio en concurso de belleza. Cobra 10m', 'collect:10'),
+('COMMUNITY', 'Acciones', 'Venta de acciones. Cobra 50m', 'collect:50'),
+('COMMUNITY', 'Impuestos', 'Devolución de impuestos. Cobra 20m', 'collect:20'),
+('COMMUNITY', 'Honorarios', 'Honorarios de consultoría. Cobra 25m', 'collect:25'),
+('COMMUNITY', 'Vacaciones', 'Fondo vacacional. Cobra 100m', 'collect:100');
+
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -96,54 +140,6 @@ CREATE INDEX idx_game_history_game_id ON game_history(game_id);
 
 -- Default Data
 INSERT INTO valid_codes (code, description) VALUES ('BETA123', 'Default beta access code') ON CONFLICT DO NOTHING;
-
-
--- Community Chest Cards
-CREATE TABLE IF NOT EXISTS community_chest_cards (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255),
-    description TEXT,
-    action TEXT
-);
-TRUNCATE community_chest_cards RESTART IDENTITY;
-INSERT INTO community_chest_cards (title, description, action) VALUES ('el seguro de vida', 'te reporta beneficios', 'cobra 100m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('avanza a la salida', 'avanza hasta la salida', 'cobra 200m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('gastos escolares', 'gastos escolares', 'paga 50m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('herencia misteriosa', 'recibes una herencia misteriosa', 'cobra 100m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('ve a la carcel', 've directamente a la carcel, no pases por la salida ni cobres 200m', 'encarcelado');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('adopcion', 'adoptas un perrito', 'paga 50m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('facturas', 'facturas de hospital', 'paga 100m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('pase gratis', 'sal de la carcel gratis, puedes vender o intercambiar esta tarjeta, o guardarla hasta que la necesites', 'salir de la carsel, se puede guardar en el inventario');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('reparaciones viales', 'debes hacer reparaciones viales', 'por cada casa, paga 40m, por cada hotel, paga 115m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('error bancario', 'error bancario a tu favor', 'cobra 200m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('cumpleaños', 'es tu cumpleaños', 'cobra 10m a cada jugador');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('concurso de belleza', 'has ganado el segundo premio en un concurso de belleza', 'cobra 10m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('acciones', 'por venta de acciones', 'cobra 50m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('impuestos', 'devolucion de impuestos', 'cobra 20m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('honorarios', 'honorarios de consultoria', 'cobra 25m');
-INSERT INTO community_chest_cards (title, description, action) VALUES ('vacaciones', 'el fondo vacacional te reporta beneficios', 'cobra 100');
-
--- Chance Cards
-CREATE TABLE IF NOT EXISTS chance_cards (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255),
-    description TEXT,
-    action TEXT
-);
-TRUNCATE chance_cards RESTART IDENTITY;
-INSERT INTO chance_cards (title, description, action) VALUES ('multa', 'multa por exceso de velocidad', 'paga 15m');
-INSERT INTO chance_cards (title, description, action) VALUES ('reparaciones generales', 'haz reparaciones generales en todas tus propiedades', 'por cada casa, paga 25m, por cada hotel, paga 100m');
-INSERT INTO chance_cards (title, description, action) VALUES ('avanza a (avenida aleatoria)', 'avanza a (avenida aleatoria), si pasas por la salida, cobra 200m', 'avanzar a avenida aleatoria, si pasa por la salida, cobra 200m');
-INSERT INTO chance_cards (title, description, action) VALUES ('avanza a un transporte', 'avanza hacia (transporte aleatorio), si no tiene dueño, puedes comprarlo al banco, si tiene dueño, paga el doble de la renta, si pasas por la salida, cobra 200m', 'avanzar a transporte aleatorio, si no tiene dueño comprarla, si tiene dueño, pagar el doble de renta, si pasa por la salida, cobra 200m');
-INSERT INTO chance_cards (title, description, action) VALUES ('pase gratis', 'sal de la carcel gratis, puedes intercambiar o vender esta tarjeta, o guardarla hasta que la necesites', 'salir de la carsel, se puede guardar en el inventario');
-INSERT INTO chance_cards (title, description, action) VALUES ('avanza hacia un servicio', 'avanza hasta el servicio publico mas cercano, si no tiene dueño, puedes comprarlo al banco, si tiene dueño, tira los dados y paga al dueño un total de diez veces la cantidad mostrada, si pasas por la salida, cobra 200m', 'avanzar al servicio mas cercano, si no tiene dueño comprarla, si tiene dueño,tira los dados y paga al dueño un total de diez veces la cantidad mostrada, si pasa por la salida, cobra 200m');
-INSERT INTO chance_cards (title, description, action) VALUES ('prestamo', 'por cumplimiento en el pago del prestamo de construccion, cobra 150m', 'cobrar 150m');
-INSERT INTO chance_cards (title, description, action) VALUES ('avanzar a la salida', 'avanza hasta la salida', 'cobra 500m');
-INSERT INTO chance_cards (title, description, action) VALUES ('presidente', 'has sido elegido presidente del consejo de administracion', 'paga a cada jugador 50m');
-INSERT INTO chance_cards (title, description, action) VALUES ('dividendos', 'el banco te paga un dividendo de 50m', 'cobra 50m');
-INSERT INTO chance_cards (title, description, action) VALUES ('retroceder', 'retrocede tres casillas', 'retrocede 3 casillas');
-INSERT INTO chance_cards (title, description, action) VALUES ('avanza hasta (la ultima casilla de propiedad)', 'avanza hasta (la ultima casilla de propiedad)', 'avanza hasta la ultima casilla de propiedad');
-INSERT INTO chance_cards (title, description, action) VALUES ('a la carcel', 've a la carcel, directamente, no pases por la salida ni cobres 200m', 've a la carcel');
 
 -- Properties
 CREATE TABLE IF NOT EXISTS properties (

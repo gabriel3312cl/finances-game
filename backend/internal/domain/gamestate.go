@@ -14,6 +14,15 @@ type GameState struct {
 	TileVisits        map[int]int       `json:"tile_visits"`        // TileIndex -> VisitCount
 	Logs              []EventLog        `json:"logs"`
 	TurnOrder         []string          `json:"turn_order"` // UserIDs in order
+	DrawnCard         *Card             `json:"drawn_card,omitempty"`
+}
+
+type Card struct {
+	ID          int    `json:"id"`
+	Type        string `json:"type"` // CHANCE, COMMUNITY
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Effect      string `json:"effect"` // e.g. "move:10", "pay:50", "collect:200"
 }
 
 type EventLog struct {

@@ -17,6 +17,7 @@ interface Tile {
     id: number;
     type: string;
     name: string;
+    property_id?: string; // Add property_id
     owner_id?: string;
     price?: number;
     rent?: number;
@@ -39,6 +40,7 @@ interface GameState {
     tile_visits: Record<number, number>;
     logs: any[];
     turn_order: string[];
+    drawn_card?: { id: number; type: string; title?: string; description: string; effect: string };
 }
 
 interface GameStore {
