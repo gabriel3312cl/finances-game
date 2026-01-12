@@ -10,92 +10,135 @@ interface TileDetailModalProps {
     onClose: () => void;
 }
 
+// Classic Monopoly Title Deed Design
 export default function TileDetailModal({ tile, gameState, onClose }: TileDetailModalProps) {
     if (!tile) return null;
 
     const propertyId = tile.propertyId;
     const ownerId = propertyId ? gameState?.property_ownership?.[propertyId] : null;
     const owner = ownerId ? gameState?.players?.find((p: any) => p.user_id === ownerId) : null;
-
-    // Derived Data
     const isOwned = !!owner;
-    const rent = tile.rent || Math.floor((tile.price || 0) * 0.1); // Fallback estimate if not in Data
 
     return (
-        <Dialog open={!!tile} onClose={onClose} maxWidth="xs" fullWidth>
-            <DialogTitle sx={{ bgcolor: tile.color || 'grey.800', color: tile.color ? 'white' : 'white', textAlign: 'center', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-                {tile.name}
-            </DialogTitle>
-            <DialogContent sx={{ pt: 3 }}>
-                <Box sx={{ textAlign: 'center', mb: 3 }}>
-                    <Typography variant="overline" color="text.secondary">TIPO: {tile.type}</Typography>
-                    {tile.groupName && <Typography variant="caption" display="block" color="text.secondary">GRUPO: {tile.groupName}</Typography>}
-                </Box>
+        <Dialog
+            open={!!tile}
+            onClose={onClose}
+            maxWidth="xs"
+            PaperProps={{
+                sx: {
+                    borderRadius: 0,
+                    border: '2px solid black',
+                    boxShadow: '10px 10px 0px rgba(0,0,0,0.5)',
+                    overflow: 'visible'
+                }
+            }}
+        >
+            <Box sx={{ p: 2, bgcolor: 'white', color: 'black', border: '1px solid black', m: 0.5, minHeight: 400, display: 'flex', flexDirection: 'column' }}>
 
-                {propertyId ? (
-                    <>
-                        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>
-                            {isOwned ? (
-                                <Chip
-                                    icon={<VpnKey />}
-                                    label={`Propiedad de: ${owner.name}`}
-                                    color="success"
-                                    variant="outlined"
-                                />
-                            ) : (
-                                <Chip
-                                    icon={<MonetizationOn />}
-                                    label={`Precio: $${tile.price}`}
-                                    color="primary"
-                                />
-                            )}
-                        </Box>
-
-                        <PaperSection title="Alquiler">
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2">Base</Typography>
-                                <Typography variant="body2" fontWeight="bold">${tile.rent_base}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', color: tile.rent_color_group ? 'primary.main' : 'text.disabled' }}>
-                                <Typography variant="body2">Grupo Completo</Typography>
-                                <Typography variant="body2">${tile.rent_color_group || (tile.rent_base || 0) * 2}</Typography>
-                            </Box>
-                            <Divider sx={{ my: 1 }} />
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.5 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">1 Casa</Typography><Typography variant="body2">${tile.rent_1_house}</Typography></Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">2 Casas</Typography><Typography variant="body2">${tile.rent_2_house}</Typography></Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">3 Casas</Typography><Typography variant="body2">${tile.rent_3_house}</Typography></Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">4 Casas</Typography><Typography variant="body2">${tile.rent_4_house}</Typography></Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'error.main' }}><Typography variant="body2">Hotel</Typography><Typography variant="body2">${tile.rent_hotel}</Typography></Box>
-                            </Box>
-                        </PaperSection>
-
-                        <PaperSection title="Costos">
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2">Casa</Typography>
-                                <Typography variant="body2" fontWeight="bold">${tile.house_cost}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2">Hotel</Typography>
-                                <Typography variant="body2" fontWeight="bold">${tile.hotel_cost}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                                <Typography variant="body2">Valor Hipoteca</Typography>
-                                <Typography variant="body2">${tile.mortgage_value}</Typography>
-                            </Box>
-                        </PaperSection>
-                    </>
-                ) : (
-                    <Typography align="center" fontStyle="italic" color="text.secondary">
-                        Esta casilla no es una propiedad comprable.
-                    </Typography>
+                {/* HEADER */}
+                {tile.type === 'PROPERTY' && (
+                    <Box sx={{
+                        bgcolor: tile.color || 'grey.800',
+                        color: 'white',
+                        textAlign: 'center',
+                        border: '2px solid black',
+                        mb: 2,
+                        py: 2
+                    }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontSize: '0.6rem', letterSpacing: 1, fontWeight: 'bold', color: 'inherit', opacity: 0.9 }}>
+                            TITULO DE PROPIEDAD
+                        </Typography>
+                        {tile.groupName && (
+                            <Typography variant="subtitle2" sx={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', mt: 0.5, mb: 0.5, color: 'inherit' }}>
+                                {tile.groupName}
+                            </Typography>
+                        )}
+                        <Typography variant="h5" sx={{ fontWeight: '900', textTransform: 'uppercase', lineHeight: 1.1, color: 'inherit', mt: 0.5 }}>
+                            {tile.name}
+                        </Typography>
+                    </Box>
                 )}
 
-                <Box sx={{ mt: 3, textAlign: 'center' }}>
-                    <Button onClick={onClose} variant="outlined" color="inherit">Cerrar</Button>
+                {/* NON-PROPERTY HEADER */}
+                {tile.type !== 'PROPERTY' && (
+                    <Box sx={{ textAlign: 'center', mb: 2 }}>
+                        <Typography variant="h5" fontWeight="bold" color="black">{tile.name}</Typography>
+                        <Typography variant="overline" color="text.secondary">{tile.type}</Typography>
+                    </Box>
+                )}
+
+                {/* CONTENT */}
+                <Box sx={{ flex: 1, px: 2, textAlign: 'center' }}>
+                    {propertyId ? (
+                        <>
+                            {/* OWNER CHIP */}
+                            {isOwned && (
+                                <Box sx={{ mb: 2, textAlign: 'center' }}>
+                                    <Chip
+                                        label={`Propiedad de: ${owner.name}`}
+                                        color="success"
+                                        variant="filled"
+                                        size="small"
+                                        sx={{ borderRadius: 1, fontWeight: 'bold' }}
+                                    />
+                                </Box>
+                            )}
+
+                            {tile.type === 'PROPERTY' ? (
+                                <>
+                                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: 'black' }}>ALQUILER ${tile.rent_base}</Typography>
+
+                                    <Box sx={{ textAlign: 'left', mb: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                        <RentRow label="con 1 Casa" value={tile.rent_1_house} />
+                                        <RentRow label="con 2 Casas" value={tile.rent_2_house} />
+                                        <RentRow label="con 3 Casas" value={tile.rent_3_house} />
+                                        <RentRow label="con 4 Casas" value={tile.rent_4_house} />
+
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                                            <Typography variant="body2" sx={{ color: 'black' }}>Con HOTEL ${tile.rent_hotel}</Typography>
+                                        </Box>
+                                    </Box>
+
+                                    <Divider sx={{ bgcolor: 'black', mb: 2 }} />
+
+                                    <Typography variant="body2" sx={{ mb: 0.5, color: 'black' }}>Valor Hipoteca ${tile.mortgage_value}</Typography>
+                                    <Typography variant="body2" sx={{ mb: 0.5, color: 'black' }}>Coste de casas ${tile.house_cost}. cada una</Typography>
+                                    <Typography variant="body2" sx={{ mb: 1, color: 'black' }}>Hoteles, ${tile.hotel_cost}. más 4 casas</Typography>
+
+                                    <Typography variant="caption" sx={{ display: 'block', fontSize: '0.65rem', lineHeight: 1.2, mt: 2, fontStyle: 'italic', color: 'black' }}>
+                                        Si un jugador posee TODOS los solares de un Grupo de Color, el alquiler se duplica en los solares sin edificar de ese grupo.
+                                    </Typography>
+                                </>
+                            ) : (
+                                <Box sx={{ py: 4 }}>
+                                    <Typography variant="body1" color="black">Precio: ${tile.price}</Typography>
+                                    <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                                        La renta depende de la tirada de dados o cantidad de estaciones poseídas.
+                                    </Typography>
+                                </Box>
+                            )}
+                        </>
+                    ) : (
+                        <Box sx={{ py: 4 }}>
+                            <Typography color="black">Esta casilla no tiene título de propiedad.</Typography>
+                        </Box>
+                    )}
                 </Box>
-            </DialogContent >
-        </Dialog >
+
+                <Box sx={{ textAlign: 'center', mt: 2 }}>
+                    <Button onClick={onClose} sx={{ color: 'black', fontWeight: 'bold', border: '1px solid black' }}>CERRAR</Button>
+                </Box>
+            </Box>
+        </Dialog>
+    );
+}
+
+function RentRow({ label, value }: { label: string, value?: number }) {
+    return (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="body2" sx={{ color: 'black' }}>{label}</Typography>
+            <Typography variant="body2" sx={{ color: 'black' }}>${value}</Typography>
+        </Box>
     );
 }
 
