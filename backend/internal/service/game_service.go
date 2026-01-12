@@ -372,6 +372,9 @@ func (s *GameService) endAuction(game *domain.GameState) {
 				break
 			}
 		}
+		// Assign Property
+		game.PropertyOwnership[game.ActiveAuction.PropertyID] = winnerID
+		
 		game.LastAction = "¡Subasta finalizada! Ganador: " + game.ActiveAuction.BidderName
 	} else {
 		game.LastAction = "¡Subasta finalizada! Sin ofertas."

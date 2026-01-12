@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS games (
     id VARCHAR(255) PRIMARY KEY, -- Widened to 255
     code VARCHAR(50), -- Widened
     host_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    state VARCHAR(50) DEFAULT 'WAITING',
+    state TEXT, -- Stores JSON State blob (was VARCHAR causing truncation)
     active BOOLEAN DEFAULT TRUE,
     current_turn_player_id UUID,
     settings JSONB DEFAULT '{}',
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS game_properties (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     game_id VARCHAR(255) REFERENCES games(id) ON DELETE CASCADE, -- Match games.id
     property_id VARCHAR(255) NOT NULL, -- Widened
-    owner_id UUID REFERENCES game_players(id) ON DELETE SET NULL,
+    owner_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Changed to match UserID logic
     mortgaged BOOLEAN DEFAULT FALSE,
     houses INT DEFAULT 0,
     hotels INT DEFAULT 0,
