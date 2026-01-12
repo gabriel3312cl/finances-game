@@ -417,7 +417,7 @@ export default function GameBoard() {
                     gameState={gameState}
                     user={user}
                     sendMessage={sendMessage}
-                    onClose={() => setHiddenCardId(gameState.drawn_card.id)}
+                    onClose={() => setHiddenCardId(gameState.drawn_card?.id ?? null)}
                 />
             )}
 

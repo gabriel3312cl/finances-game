@@ -25,8 +25,11 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
     const isMeOwner = isOwned && myUser?.user_id === ownerId;
     // Determine if there is a victim on the tile to charge
     const potentialVictim = gameState?.players?.find((p: any) => p.position === tile.id && p.user_id !== ownerId);
-    // Can charge if: Is Owned, I am Owner, There is a Victim on tile.
-    const canCharge = isMeOwner && !!potentialVictim;
+    // Check if there's an active pending_rent for this property
+    const pendingRent = gameState?.pending_rent;
+    const hasPendingRentForThisProperty = pendingRent && pendingRent.property_id === propertyId && pendingRent.creditor_id === myUser?.user_id;
+    // Can charge if: Is Owned, I am Owner, There is a Victim on tile, AND there is a pending rent for this property.
+    const canCharge = isMeOwner && !!potentialVictim && hasPendingRentForThisProperty;
 
     const handleCharge = () => {
         if (!canCharge || !propertyId) return;
@@ -54,7 +57,10 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
         });
 
         const totalInGroup = sameGroupTiles.length;
-        ownedCount = sameGroupTiles.filter((t: any) => t.owner_id === ownerId).length;
+        ownedCount = sameGroupTiles.filter((t: any) => {
+            const tilePropertyId = t.property_id || t.propertyId;
+            return tilePropertyId && gameState.property_ownership?.[tilePropertyId] === ownerId;
+        }).length;
 
         // Monopoly Logic for Standard Properties
         if (tile.type === 'PROPERTY') {
