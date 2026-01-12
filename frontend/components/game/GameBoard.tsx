@@ -104,9 +104,19 @@ export default function GameBoard() {
     const lastLog = gameState?.logs?.[gameState.logs.length - 1];
 
     // Dice Logic for UI
-    const currentDice = gameState?.dice || [0, 0];
-    const hasRolledAny = currentDice[0] !== 0;
-    const isDoubles = hasRolledAny && currentDice[0] === currentDice[1];
+    const logicDice = gameState?.dice || [0, 0];
+    const lastDiceRef = useRef<number[]>([1, 1]); // Default visuals
+
+    // Update ref if we have new live dice
+    if (logicDice[0] !== 0) {
+        lastDiceRef.current = logicDice;
+    }
+
+    // For rendering, use persisted dice if current is 0
+    const displayDice = logicDice[0] !== 0 ? logicDice : lastDiceRef.current;
+
+    const hasRolledAny = logicDice[0] !== 0;
+    const isDoubles = hasRolledAny && logicDice[0] === logicDice[1];
     const canRoll = !hasRolledAny || isDoubles;
     const hasRolled = hasRolledAny; // Alias for backward compat if needed or just use hasRolledAny
 
@@ -149,6 +159,8 @@ export default function GameBoard() {
 
     if (!gameState) return <Box sx={{ p: 4, color: 'white' }}>Cargando partida...</Box>;
 
+    const myPlayer = gameState.players?.find((p: any) => p.user_id === user.user_id);
+
     return (
         <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#0f172a', overflow: 'hidden' }}>
 
@@ -157,7 +169,20 @@ export default function GameBoard() {
                 <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Casino color="warning" /> MONOPOLY FT
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+
+                    {/* My Player Info */}
+                    {myPlayer && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'rgba(255,255,255,0.05)', px: 1.5, py: 0.5, borderRadius: 2 }}>
+                            <Box sx={{ width: 24, height: 24 }}>
+                                <PlayerToken color={myPlayer.token_color} name={myPlayer.name} isCurrentTurn={false} />
+                            </Box>
+                            <Typography variant="body2" color="white" fontWeight="bold">
+                                ${myPlayer.balance}
+                            </Typography>
+                        </Box>
+                    )}
+
                     <Typography variant="body2" sx={{ color: 'white', bgcolor: 'primary.main', px: 1, borderRadius: 1 }}>
                         Turno: {gameState.players.find((p: any) => p.user_id === gameState.current_turn_id)?.name || '...'}
                     </Typography>
@@ -170,15 +195,7 @@ export default function GameBoard() {
                 {/* ACTIVE LANE VIEW */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 2 }}>
 
-                    {/* Navigation */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4, zIndex: 5 }}>
-                        <Button variant="contained" onClick={() => setCurrentLane((prev) => (prev - 1 + 4) % 4)} sx={{ fontWeight: 'bold' }}>Anterior</Button>
-                        <Typography variant="h5" color="white" fontWeight="bold">
-                            {['Fila Inferior (Salida)', 'Fila Izquierda', 'Fila Superior', 'Fila Derecha'][currentLane]}
-                        </Typography>
-                        <Button variant="contained" onClick={() => setCurrentLane((prev) => (prev + 1) % 4)} sx={{ fontWeight: 'bold' }}>Siguiente</Button>
-                        <Button color="secondary" variant="outlined" onClick={focusMyLane}>Centrar en Mí</Button>
-                    </Box>
+                    {/* Navigation Removed per user request */}
 
                     {/* Tiles Row */}
                     <Box sx={{ display: 'flex', gap: 0, overflowX: 'auto', maxWidth: '100%', px: 4, pb: 2, alignItems: 'center', minHeight: 200 }}>
@@ -213,7 +230,7 @@ export default function GameBoard() {
                     {/* Dice */}
                     <Paper sx={{ p: 1, px: 3, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#334155' }}>
                         <Typography variant="h6" color="white">DADOS:</Typography>
-                        {currentDice.map((d: number, i: number) => (
+                        {displayDice.map((d: number, i: number) => (
                             <Box key={i} sx={{ width: 40, height: 40, bgcolor: 'white', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', borderRadius: 1, fontSize: 20 }}>{d}</Box>
                         ))}
                     </Paper>
@@ -284,19 +301,51 @@ export default function GameBoard() {
                             }
                         });
 
+
                         return gridCells.map((tile, i) => {
+                            // Lanes mapping
+                            let isFocused = false;
+                            let laneIndex = -1;
+
+                            if (tile) {
+                                const id = tile.id;
+                                if (id < 16) laneIndex = 0;
+                                else if (id < 32) laneIndex = 1;
+                                else if (id < 48) laneIndex = 2;
+                                else laneIndex = 3;
+
+                                // Special case for shared corners if we want smoother feel, but explicit ranges work.
+                                // Adjusted ranges slightly to include start corner in previous lane? 
+                                // Let's stick to the visual ranges:
+                                // Lane 0: 0-16. Lane 1: 16-32. Lane 2: 32-48. Lane 3: 48-63.
+
+                                if (currentLane === 0 && (id >= 0 && id <= 16)) isFocused = true;
+                                else if (currentLane === 1 && (id >= 16 && id <= 32)) isFocused = true;
+                                else if (currentLane === 2 && (id >= 32 && id <= 48)) isFocused = true;
+                                else if (currentLane === 3 && (id >= 48 && id <= 63)) isFocused = true;
+                            }
+
                             if (!tile) return <Box key={`empty-${i}`} sx={{ bgcolor: 'transparent' }} />;
 
                             // Check if player is here
                             const playerHere = gameState.players.find((p: any) => p.position === tile.id);
 
                             return (
-                                <Box key={tile.id} sx={{
-                                    width: '100%', height: '100%',
-                                    bgcolor: playerHere ? playerHere.token_color : (tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0')),
-                                    border: playerHere ? '1px solid white' : 'none',
-                                    borderRadius: '2px'
-                                }}>
+                                <Box
+                                    key={tile.id}
+                                    onClick={() => {
+                                        if (laneIndex !== -1) setCurrentLane(laneIndex);
+                                    }}
+                                    sx={{
+                                        width: '100%', height: '100%',
+                                        bgcolor: playerHere ? playerHere.token_color : (tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0')),
+                                        border: playerHere ? '1px solid white' : 'none',
+                                        borderRadius: '2px',
+                                        opacity: isFocused ? 1 : 0.3, // Dim non-focused lanes
+                                        transition: 'opacity 0.3s',
+                                        cursor: 'pointer',
+                                        '&:hover': { opacity: 1, transform: 'scale(1.1)', zIndex: 10 }
+                                    }}>
                                 </Box>
                             );
                         });

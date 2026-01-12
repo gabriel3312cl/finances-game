@@ -51,6 +51,10 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
     // const propertyName above replaces the boardTiles lookup
     const isWinning = auction.bidder_id === user?.user_id;
 
+    // Get current player from gameState to check balance
+    const me = gameState?.players?.find((p: any) => p.user_id === user?.user_id);
+    const myBalance = me?.balance || 0;
+
     const handleBid = (amount: number) => {
         sendMessage('BID', { amount });
         setCustomBid('');
@@ -117,17 +121,21 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
 
                 {/* Bidding Controls */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, mb: 2 }}>
-                    {[10, 50, 100].map(inc => (
-                        <Button
-                            key={inc}
-                            variant="outlined"
-                            color="inherit"
-                            sx={{ color: 'white', borderColor: 'grey.700' }}
-                            onClick={() => handleBid(currentBid + inc)}
-                        >
-                            +${inc}
-                        </Button>
-                    ))}
+                    {[10, 50, 100].map(inc => {
+                        const cantAfford = (currentBid + inc) > myBalance;
+                        return (
+                            <Button
+                                key={inc}
+                                variant="outlined"
+                                color="inherit"
+                                sx={{ color: 'white', borderColor: 'grey.700', opacity: cantAfford ? 0.5 : 1 }}
+                                onClick={() => handleBid(currentBid + inc)}
+                                disabled={cantAfford}
+                            >
+                                +${inc}
+                            </Button>
+                        );
+                    })}
                 </Box>
 
                 <TextField
@@ -150,7 +158,7 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
                                         const val = parseInt(customBid);
                                         if (val > currentBid) handleBid(val);
                                     }}
-                                    disabled={!customBid || parseInt(customBid) <= currentBid}
+                                    disabled={!customBid || parseInt(customBid) <= currentBid || parseInt(customBid) > myBalance}
                                 >
                                     OFERTAR
                                 </Button>
