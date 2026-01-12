@@ -66,6 +66,7 @@ type Tile struct {
 	ID              int     `json:"id"`
 	Type            string  `json:"type"` // PROPERTY, CHANCE, TAX, CORNER, UTILITY, RAILROAD
 	Name            string  `json:"name"`
+	RentRule        string  `json:"rent_rule"`
 	PropertyID      string  `json:"property_id,omitempty"` // UUID
 	OwnerID         *string `json:"owner_id,omitempty"`
 	Price           int     `json:"price,omitempty"`

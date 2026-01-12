@@ -1,4 +1,4 @@
-export type TileType = 'PROPERTY' | 'CORNER' | 'CHANCE' | 'COMMUNITY' | 'TAX' | 'UTILITY' | 'RAILROAD' | 'REST' | 'JAIL_VISIT' | 'GO_TO_JAIL' | 'FREE_PARKING';
+export type TileType = 'PROPERTY' | 'CORNER' | 'CHANCE' | 'COMMUNITY' | 'TAX' | 'UTILITY' | 'RAILROAD' | 'REST' | 'JAIL_VISIT' | 'GO_TO_JAIL' | 'FREE_PARKING' | 'ATTRACTION' | 'PARK';
 
 export interface TileData {
     id: number;
@@ -6,7 +6,8 @@ export interface TileData {
     type: TileType;
     price?: number;
     color?: string; // CSS color or Tailwind class
-    groupId?: string; // 1.1, 1.2, etc. (Deprecated in UI, use groupName)
+    groupId?: string; // Legacy
+    group_identifier?: string; // Backend Sync
     groupName?: string; // e.g., "Cerro Navia"
     buildingCount?: number;
     // Extended Rent Info
@@ -22,6 +23,7 @@ export interface TileData {
     mortgage_value?: number;
     rent?: number;
     propertyId?: string; // Backend ID (e.g. 1.1.1)
+    rent_rule?: 'STANDARD' | 'TRANSPORT_COUNT' | 'DICE_MULTIPLIER' | string;
 }
 
 // Helper to determine grid position for 17x17 loop

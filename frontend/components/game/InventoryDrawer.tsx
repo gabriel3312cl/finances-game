@@ -16,30 +16,42 @@ interface InventoryDrawerProps {
     sendMessage: (action: string, payload: any) => void;
 }
 
-export default function InventoryDrawer({ isOpen, onClose, gameState, user, sendMessage }: InventoryDrawerProps) {
+export default function InventoryDrawer({ isOpen, onClose, gameState, user, sendMessage, targetPlayerId }: InventoryDrawerProps & { targetPlayerId?: string }) {
     const [activeTab, setActiveTab] = useState(0);
     const [loanAmount, setLoanAmount] = useState('');
 
     if (!user || !gameState) return null;
 
-    // Filter properties owned by this user
-    // Filter properties owned by this user
+    // Determine whose inventory to show
+    const isMe = !targetPlayerId || targetPlayerId === user.user_id;
+    const playerId = targetPlayerId || user.user_id;
+    const player = gameState.players?.find((p: any) => p.user_id === playerId);
+
+    if (!player) return null; // Should not happen
+
+    // Filter properties owned by this player
     const board = gameState.board || [];
     const myProperties = board.filter((tile: any) => {
         if (!tile.property_id) return false;
         // Check ownership from map or tile itself if available
         // gameState.property_ownership is map[propID] -> userID
         const owner = gameState.property_ownership?.[tile.property_id];
-        return owner === user.user_id && (tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD');
+        return owner === playerId && (
+            tile.type === 'PROPERTY' ||
+            tile.type === 'UTILITY' ||
+            tile.type === 'RAILROAD' ||
+            tile.type === 'ATTRACTION' ||
+            tile.type === 'PARK'
+        );
     });
 
-    const totalAssetValue = myProperties.reduce((acc, tile) => acc + (tile.price || 0), 0);
-    const myPlayer = gameState.players?.find((p: any) => p.user_id === user.user_id);
-    const balance = myPlayer?.balance || 0;
-    const loan = myPlayer?.loan || 0;
+    const totalAssetValue = myProperties.reduce((acc: any, tile: any) => acc + (tile.price || 0), 0);
+    const balance = player.balance || 0;
+    const loan = player.loan || 0;
     const netWorth = balance + totalAssetValue - loan;
 
     const handleTransaction = (type: 'TAKE' | 'PAY') => {
+        if (!isMe) return; // Guard
         const amount = parseInt(loanAmount);
         if (!amount || amount <= 0) return;
         sendMessage(type === 'TAKE' ? 'TAKE_LOAN' : 'PAY_LOAN', { amount });
@@ -59,7 +71,7 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                 {/* Header */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Typography variant="h5" fontWeight="bold">
-                        Mi Portafolio
+                        {isMe ? 'Mi Portafolio' : `Portafolio de ${player.name}`}
                     </Typography>
                     <IconButton onClick={onClose}>
                         <Close />
@@ -112,7 +124,7 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
 
                             {myProperties.length === 0 ? (
                                 <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4, fontStyle: 'italic' }}>
-                                    No tienes propiedades aún.
+                                    {isMe ? 'No tienes propiedades aún.' : 'Este jugador no tiene propiedades.'}
                                 </Typography>
                             ) : (
                                 <List>
@@ -140,52 +152,58 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                                 <Typography variant="caption" color="text.secondary">Máximo permitido: $5,000</Typography>
                             </Card>
 
-                            <Box>
-                                <Typography variant="subtitle2" gutterBottom>Gestionar Préstamo</Typography>
-                                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                                    {[100, 500, 1000].map(amt => (
-                                        <Button
-                                            key={amt}
-                                            variant="outlined"
-                                            fullWidth
-                                            size="small"
-                                            onClick={() => setLoanAmount(amt.toString())}
-                                        >
-                                            ${amt}
-                                        </Button>
-                                    ))}
+                            {isMe ? (
+                                <Box>
+                                    <Typography variant="subtitle2" gutterBottom>Gestionar Préstamo</Typography>
+                                    <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                                        {[100, 500, 1000].map(amt => (
+                                            <Button
+                                                key={amt}
+                                                variant="outlined"
+                                                fullWidth
+                                                size="small"
+                                                onClick={() => setLoanAmount(amt.toString())}
+                                            >
+                                                ${amt}
+                                            </Button>
+                                        ))}
+                                    </Box>
+
+                                    <TextField
+                                        fullWidth
+                                        label="Cantidad Personalizada"
+                                        type="number"
+                                        value={loanAmount}
+                                        onChange={(e) => setLoanAmount(e.target.value)}
+                                        InputProps={{ startAdornment: <AttachMoney fontSize="small" /> }}
+                                        sx={{ mb: 2 }}
+                                    />
+
+                                    <Button
+                                        fullWidth
+                                        variant="contained"
+                                        color="success"
+                                        onClick={() => handleTransaction('TAKE')}
+                                        disabled={!loanAmount}
+                                        sx={{ mb: 1 }}
+                                    >
+                                        SOLICITAR PRÉSTAMO
+                                    </Button>
+                                    <Button
+                                        fullWidth
+                                        variant="contained"
+                                        color="info"
+                                        onClick={() => handleTransaction('PAY')}
+                                        disabled={!loanAmount}
+                                    >
+                                        PAGAR DEUDA
+                                    </Button>
                                 </Box>
-
-                                <TextField
-                                    fullWidth
-                                    label="Cantidad Personalizada"
-                                    type="number"
-                                    value={loanAmount}
-                                    onChange={(e) => setLoanAmount(e.target.value)}
-                                    InputProps={{ startAdornment: <AttachMoney fontSize="small" /> }}
-                                    sx={{ mb: 2 }}
-                                />
-
-                                <Button
-                                    fullWidth
-                                    variant="contained"
-                                    color="success"
-                                    onClick={() => handleTransaction('TAKE')}
-                                    disabled={!loanAmount}
-                                    sx={{ mb: 1 }}
-                                >
-                                    SOLICITAR PRÉSTAMO
-                                </Button>
-                                <Button
-                                    fullWidth
-                                    variant="contained"
-                                    color="info"
-                                    onClick={() => handleTransaction('PAY')}
-                                    disabled={!loanAmount}
-                                >
-                                    PAGAR DEUDA
-                                </Button>
-                            </Box>
+                            ) : (
+                                <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
+                                    Solo el propietario puede gestionar sus préstamos.
+                                </Typography>
+                            )}
                         </Box>
                     )}
                 </Box>

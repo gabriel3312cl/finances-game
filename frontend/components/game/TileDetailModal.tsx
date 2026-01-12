@@ -1,24 +1,99 @@
 'use client';
 import React from 'react';
 import { TileData } from '@/config/boardData';
-import { Dialog, DialogTitle, DialogContent, Typography, Box, Chip, Divider, Grid, Button } from '@mui/material';
-import { House, MonetizationOn, VpnKey } from '@mui/icons-material';
+import { Dialog, Box, Typography, Chip, Divider, Button } from '@mui/material';
 import { getContrastColor } from '@/theme';
 
 interface TileDetailModalProps {
     tile: TileData | null;
     gameState: any;
+    user: any;
+    sendMessage: (action: string, payload: any) => void;
     onClose: () => void;
 }
 
-// Classic Monopoly Title Deed Design
-export default function TileDetailModal({ tile, gameState, onClose }: TileDetailModalProps) {
+export default function TileDetailModal({ tile, gameState, user, sendMessage, onClose }: TileDetailModalProps) {
     if (!tile) return null;
 
     const propertyId = tile.propertyId;
     const ownerId = propertyId ? gameState?.property_ownership?.[propertyId] : null;
     const owner = ownerId ? gameState?.players?.find((p: any) => p.user_id === ownerId) : null;
     const isOwned = !!owner;
+
+    const myUser = user;
+    const isMeOwner = isOwned && myUser?.user_id === ownerId;
+    // Determine if there is a victim on the tile to charge
+    const potentialVictim = gameState?.players?.find((p: any) => p.position === tile.id && p.user_id !== ownerId);
+    // Can charge if: Is Owned, I am Owner, There is a Victim on tile.
+    const canCharge = isMeOwner && !!potentialVictim;
+
+    const handleCharge = () => {
+        if (!canCharge || !propertyId) return;
+        sendMessage('PAY_RENT', { property_id: propertyId, target_id: potentialVictim.user_id });
+        onClose();
+    };
+
+    // Calculate Owned Count in Group
+    let ownedCount = 0;
+    let isActiveLevel = -1; // -1: N/A, 0: Base, 1-4: Houses, 5: Hotel
+    let isMonopoly = false;
+
+    if (ownerId && gameState?.board) {
+        const board = gameState.board;
+
+        // Count owned in group
+        const sameGroupTiles = board.filter((t: any) => {
+            // Match logic from before
+            if (tile.rent_rule === 'TRANSPORT_COUNT') return t.rent_rule === 'TRANSPORT_COUNT';
+            if (tile.rent_rule === 'DICE_MULTIPLIER') return t.type === tile.type; // Utilities/Parks
+
+            const targetGroup = tile.group_identifier || tile.groupId;
+            if (!targetGroup) return false;
+            return (t.group_identifier === targetGroup) || (t.groupId === targetGroup);
+        });
+
+        const totalInGroup = sameGroupTiles.length;
+        ownedCount = sameGroupTiles.filter((t: any) => t.owner_id === ownerId).length;
+
+        // Monopoly Logic for Standard Properties
+        if (tile.type === 'PROPERTY') {
+            isMonopoly = ownedCount === totalInGroup;
+            const houseCount = tile.buildingCount || 0;
+            if (houseCount === 5) isActiveLevel = 5;
+            else if (houseCount > 0) isActiveLevel = houseCount;
+            else isActiveLevel = 0;
+        } else {
+            // For Specials, active level matches owned count usually
+            isActiveLevel = ownedCount;
+        }
+    }
+
+    // Helper for Row Opacity/Highlight
+    // User wants:
+    // 1. If not owned group (No Monopoly, Base Rent): "Blacken/Dim default option but maybe Red Highlight".
+    // 2. If Monopoly/Houses: "Highlight corresponding option".
+    // 3. Others: Dimmed ("Blackened").
+
+    const getRowState = (levelOrIndex: number, isBaseProp: boolean = false) => {
+        if (!isOwned) return { dimmed: false, active: false, bad: false }; // Show normal if unowned? Or everything normal.
+
+        // If Owned:
+        if (tile.type === 'PROPERTY') {
+            if (levelOrIndex === isActiveLevel) {
+                // Active Row
+                if (levelOrIndex === 0 && !isMonopoly) return { dimmed: false, active: true, bad: true }; // Base Rent, No Monopoly -> Bad Active
+                return { dimmed: false, active: true, bad: false }; // Good Active (Monopoly or Houses)
+            }
+            return { dimmed: true, active: false, bad: false };
+        } else {
+            // Specials
+            // Level corresponds to ownedCount
+            if (levelOrIndex === isActiveLevel) {
+                return { dimmed: false, active: true, bad: false };
+            }
+            return { dimmed: true, active: false, bad: false };
+        }
+    };
 
     return (
         <Dialog
@@ -40,7 +115,7 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
                 {tile.type === 'PROPERTY' && (
                     <Box sx={{
                         bgcolor: tile.color || 'grey.800',
-                        color: getContrastColor(tile.color || '#333'), // Dynamic Text Color
+                        color: getContrastColor(tile.color || '#333'),
                         textAlign: 'center',
                         border: '2px solid black',
                         mb: 2,
@@ -87,16 +162,54 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
 
                             {tile.type === 'PROPERTY' ? (
                                 <>
-                                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: 'black' }}>ALQUILER ${tile.rent_base}</Typography>
+                                    {/* Base Rent */}
+                                    {(() => {
+                                        const { dimmed, active, bad } = getRowState(0, true);
+                                        return (
+                                            <Box sx={{ mb: 1 }}>
+                                                <RentRow
+                                                    label="ALQUILER"
+                                                    value={tile.rent_base}
+                                                    isActive={active}
+                                                    isBad={bad}
+                                                    isDimmed={dimmed}
+                                                    onClick={active && canCharge ? handleCharge : undefined}
+                                                />
+                                            </Box>
+                                        );
+                                    })()}
 
                                     <Box sx={{ textAlign: 'left', mb: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                                        <RentRow label="con 1 Casa" value={tile.rent_1_house} />
-                                        <RentRow label="con 2 Casas" value={tile.rent_2_house} />
-                                        <RentRow label="con 3 Casas" value={tile.rent_3_house} />
-                                        <RentRow label="con 4 Casas" value={tile.rent_4_house} />
+                                        {[1, 2, 3, 4].map(houses => {
+                                            const { dimmed, active, bad } = getRowState(houses);
+                                            return (
+                                                <RentRow
+                                                    key={houses}
+                                                    label={`con ${houses} Casa${houses > 1 ? 's' : ''}`}
+                                                    value={tile[`rent_${houses}_house` as keyof TileData] as number}
+                                                    isActive={active}
+                                                    isBad={bad}
+                                                    isDimmed={dimmed}
+                                                    onClick={active && canCharge ? handleCharge : undefined}
+                                                />
+                                            );
+                                        })}
 
                                         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
-                                            <Typography variant="body2" sx={{ color: 'black' }}>Con HOTEL ${tile.rent_hotel}</Typography>
+                                            {(() => {
+                                                const { dimmed, active, bad } = getRowState(5);
+                                                return (
+                                                    <RentRow
+                                                        label="Con HOTEL"
+                                                        value={tile.rent_hotel}
+                                                        isActive={active}
+                                                        isBad={bad}
+                                                        isDimmed={dimmed}
+                                                        onClick={active && canCharge ? handleCharge : undefined}
+                                                        centered
+                                                    />
+                                                );
+                                            })()}
                                         </Box>
                                     </Box>
 
@@ -111,11 +224,103 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
                                     </Typography>
                                 </>
                             ) : (
-                                <Box sx={{ py: 4 }}>
-                                    <Typography variant="body1" color="black">Precio: ${tile.price}</Typography>
-                                    <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
-                                        La renta depende de la tirada de dados o cantidad de estaciones poseídas.
-                                    </Typography>
+                                <Box sx={{ py: 2 }}>
+                                    {/* TRANSPORT LOGIC */}
+                                    {tile.rent_rule === 'TRANSPORT_COUNT' && (
+                                        <Box>
+                                            <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic', color: 'black' }}>
+                                                La renta se basa en el número de transportes que posee el propietario ({owner ? (ownedCount || 0) : '-'} en posesión).
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                {[25, 50, 100, 200, 400].map((val, idx) => {
+                                                    const count = idx + 1; // 1-based count
+                                                    // Map idx to standard levels? transport logic is separate.
+                                                    // We used isActiveLevel = ownedCount.
+                                                    const { dimmed, active, bad } = getRowState(count);
+                                                    return (
+                                                        <RentRow
+                                                            key={idx}
+                                                            label={`Con ${count} Transporte${count > 1 ? 's' : ''}`}
+                                                            value={val}
+                                                            isActive={active}
+                                                            isBad={bad}
+                                                            isDimmed={dimmed}
+                                                            onClick={active && canCharge ? handleCharge : undefined}
+                                                        />
+                                                    );
+                                                })}
+                                            </Box>
+                                        </Box>
+                                    )}
+
+                                    {/* DICE MULTIPLIER LOGIC */}
+                                    {tile.rent_rule === 'DICE_MULTIPLIER' && (
+                                        <Box>
+                                            <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic', color: 'black' }}>
+                                                La renta es el resultado de los dados multiplicado por...
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                {(() => {
+                                                    let tiers: number[] = [];
+                                                    let labelSingular = "";
+                                                    let labelPlural = "";
+
+                                                    if (tile.type === 'UTILITY') {
+                                                        tiers = [4, 10, 20, 40, 60, 80]; // Wait, original code had this list?
+                                                        // Actually utility usually 4 and 10.
+                                                        // Let's stick to simple logic or reuse what was there
+                                                        // Original code: [4, 10, 20, 40, 60, 80]
+                                                        // But Standard Monopoly is 4x and 10x for 1 or 2 Utilities.
+                                                        // The array size implies support for more.
+                                                        labelSingular = "Servicio";
+                                                        labelPlural = "Servicios";
+                                                    } else if (tile.type === 'ATTRACTION') {
+                                                        tiers = [4, 10, 20, 40];
+                                                        labelSingular = "Atracción";
+                                                        labelPlural = "Atracciones";
+                                                    } else if (tile.type === 'PARK') {
+                                                        tiers = [4, 10, 20, 40];
+                                                        labelSingular = "Parque";
+                                                        labelPlural = "Parques";
+                                                    } else {
+                                                        tiers = [4, 10];
+                                                        labelSingular = "Propiedad";
+                                                        labelPlural = "Propiedades";
+                                                    }
+
+                                                    return tiers.map((multiplier, idx) => {
+                                                        const count = idx + 1;
+                                                        const label = count === 1
+                                                            ? `Si es dueño de 1 "${labelSingular}"`
+                                                            : `Si es dueño de ${count} "${labelPlural}"`;
+
+                                                        const { dimmed, active, bad } = getRowState(count);
+
+                                                        return (
+                                                            <RentRow
+                                                                key={idx}
+                                                                label={label}
+                                                                valueText={`renta es ${multiplier} veces dados`}
+                                                                isActive={active}
+                                                                isBad={bad}
+                                                                isDimmed={dimmed}
+                                                                onClick={active && canCharge ? handleCharge : undefined}
+                                                            />
+                                                        );
+                                                    });
+                                                })()}
+                                            </Box>
+                                        </Box>
+                                    )}
+
+                                    {!['TRANSPORT_COUNT', 'DICE_MULTIPLIER', 'STANDARD'].includes(tile.rent_rule || 'STANDARD') && (
+                                        <Typography variant="body2" sx={{ mt: 2, color: 'rgba(0,0,0,0.6)' }}>
+                                            Regla de renta desconocida: {tile.rent_rule}
+                                        </Typography>
+                                    )}
+
+                                    <Divider sx={{ my: 2 }} />
+                                    <Typography variant="body1" color="black" fontWeight="bold">Valor Hipoteca: ${tile.mortgage_value}</Typography>
                                 </Box>
                             )}
                         </>
@@ -134,28 +339,68 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
     );
 }
 
-function RentRow({ label, value, valueText, isActive = false }: { label: string, value?: number, valueText?: string, isActive?: boolean }) {
-    return (
-        <Box sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            bgcolor: isActive ? 'rgba(57, 255, 20, 0.2)' : 'transparent',
-            borderRadius: 1,
-            px: 0.5
-        }}>
-            <Typography variant="body2" sx={{ color: 'black', fontWeight: isActive ? 'bold' : 'normal' }}>{label}</Typography>
-            <Typography variant="body2" sx={{ color: 'black', fontWeight: isActive ? 'bold' : 'normal' }}>{valueText || (value ? `$${value}` : '-')}</Typography>
-        </Box>
-    );
+interface RentRowProps {
+    label: string;
+    value?: number;
+    valueText?: string;
+    isActive?: boolean;
+    isBad?: boolean;
+    isDimmed?: boolean;
+    centered?: boolean;
+    onClick?: () => void;
 }
 
-function PaperSection({ title, children }: { title: string, children: React.ReactNode }) {
+function RentRow({ label, value, valueText, isActive = false, isBad = false, isDimmed = false, centered = false, onClick }: RentRowProps) {
+    // Styles
+    let bgcolor = 'transparent';
+    let color = 'black';
+    let fontWeight = 'normal';
+
+    if (isActive) {
+        if (isBad) {
+            // Default option but NOT fully owned (Monopoly) -> "Blackened/Red"
+            // Suggestion: Dark Grey bg, Red text?
+            bgcolor = '#e0e0e0';
+            color = '#d32f2f'; // Red
+            fontWeight = 'bold';
+        } else {
+            // Good Active (Monopoly, Houses, or Correct Count)
+            bgcolor = 'rgba(57, 255, 20, 0.4)'; // Brighter green for active
+            fontWeight = 'bold';
+        }
+    } else if (isDimmed) {
+        // Dimmed/Impossible
+        // "Blackened" -> Dark grey text, transparent bg?
+        color = 'rgba(0,0,0,0.3)';
+    }
+
     return (
-        <Box sx={{ bgcolor: 'action.hover', p: 2, borderRadius: 2, mb: 2 }}>
-            <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-                {title}
-            </Typography>
-            {children}
+        <Box
+            onClick={onClick}
+            sx={{
+                display: 'flex',
+                justifyContent: centered ? 'center' : 'space-between',
+                gap: 2,
+                bgcolor: bgcolor,
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+                transition: 'all 0.2s',
+                opacity: isDimmed ? 0.7 : 1,
+                cursor: onClick ? 'pointer' : 'default',
+                '&:hover': onClick ? {
+                    filter: 'brightness(0.95)',
+                    transform: 'scale(1.02)'
+                } : undefined
+            }}
+        >
+            <Typography variant="body2" sx={{ color, fontWeight }}>{label}</Typography>
+            {!centered && <Typography variant="body2" sx={{ color, fontWeight }}>
+                {valueText || (value !== undefined ? `$${value}` : '-')}
+            </Typography>}
+            {centered && value !== undefined && (
+                <Typography variant="body2" sx={{ color, fontWeight, ml: 1 }}>${value}</Typography>
+            )}
         </Box>
     );
 }

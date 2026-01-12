@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGameStore } from '../store/gameStore';
-
-const API_BASE_URL = 'http://localhost:8080'; // Should be env var
+import { API_URL } from '@/lib/auth';
 
 // Fetch Board Layout
 export const useBoardConfig = () => {
@@ -10,7 +9,7 @@ export const useBoardConfig = () => {
     return useQuery({
         queryKey: ['boardConfig'],
         queryFn: async () => {
-            const response = await fetch(`${API_BASE_URL}/games/board`);
+            const response = await fetch(`${API_URL}/games/board`);
             if (!response.ok) {
                 throw new Error('Failed to fetch board config');
             }
@@ -26,7 +25,7 @@ export const useBoardConfig = () => {
 export const useJoinGame = () => {
     return useMutation({
         mutationFn: async ({ code, userId }: { code: string; userId: string }) => {
-            const response = await fetch(`${API_BASE_URL}/games/join`, {
+            const response = await fetch(`${API_URL}/games/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code }),

@@ -69,7 +69,8 @@ export default function GameBoard() {
         rent_hotel: t.rent_hotel,
         house_cost: t.house_cost,
         hotel_cost: t.hotel_cost,
-        mortgage_value: t.mortgage_value
+        mortgage_value: t.mortgage_value,
+        rent_rule: t.rent_rule // Map Rent Rule Logic
     }));
 
     // Local UI State
@@ -77,6 +78,7 @@ export default function GameBoard() {
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
     const [hiddenCardId, setHiddenCardId] = useState<number | null>(null);
+    const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
 
     // ...
 
@@ -100,7 +102,13 @@ export default function GameBoard() {
     // User must be responsible to Roll first. We can hide Roll button if already rolled 
     // BUT we don't have that field yet. We will just trust the flow or use Log check.
     const lastLog = gameState?.logs?.[gameState.logs.length - 1];
-    const hasRolled = isMyTurn && lastLog?.type === 'DICE' && lastLog.message.includes(gameState?.players?.find((p: any) => p.user_id === user.user_id)?.name);
+
+    // Dice Logic for UI
+    const currentDice = gameState?.dice || [0, 0];
+    const hasRolledAny = currentDice[0] !== 0;
+    const isDoubles = hasRolledAny && currentDice[0] === currentDice[1];
+    const canRoll = !hasRolledAny || isDoubles;
+    const hasRolled = hasRolledAny; // Alias for backward compat if needed or just use hasRolledAny
 
     // State for Settings
     const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -327,6 +335,11 @@ export default function GameBoard() {
                                         return (
                                             <Box
                                                 key={player.user_id}
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevent board drag
+                                                    setInventoryTargetId(player.user_id);
+                                                    setIsInventoryOpen(true);
+                                                }}
                                                 sx={{
                                                     gridRow: row,
                                                     gridColumn: col,
@@ -334,9 +347,11 @@ export default function GameBoard() {
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
-                                                    pointerEvents: 'none',
+                                                    pointerEvents: 'auto',
+                                                    cursor: 'pointer',
                                                     transform: `translate(${offsetX}px, ${offsetY}px)`,
-                                                    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                                                    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                                    '&:hover': { transform: `translate(${offsetX}px, ${offsetY - 5}px) scale(1.1)` }
                                                 }}
                                             >
                                                 <PlayerToken color={player.token_color} name={player.name} isCurrentTurn={gameState.current_turn_id === player.user_id} />
@@ -421,16 +436,18 @@ export default function GameBoard() {
                                             </Box>
                                         )}
 
+
+
                                         {/* Actions */}
                                         {isMyTurn && (
                                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                                                {!hasRolled && (
+                                                {canRoll && (
                                                     <Button variant="contained" color="success" size="large" startIcon={<Casino />} onClick={() => sendMessage('ROLL_DICE', {})} sx={{ px: 4, py: 1.5, borderRadius: 8, fontSize: '1.2rem' }}>
-                                                        LANZAR DADOS
+                                                        {isDoubles ? 'LANZAR DE NUEVO (DOBLES)' : 'LANZAR DADOS'}
                                                     </Button>
                                                 )}
                                                 {/* Buy Logic & End Turn Control */}
-                                                {hasRolled && (() => {
+                                                {hasRolledAny && (() => {
                                                     const me = gameState.players.find((p: any) => p.user_id === user.user_id);
                                                     if (!me) return null; // Guard against undefined
 
@@ -445,7 +462,7 @@ export default function GameBoard() {
                                                     // Force Action if on Unowned Property
                                                     // If it's an unowned property, HIDE End Turn until dealt with.
                                                     // Also ensure it's a purchasable type
-                                                    const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD';
+                                                    const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD' || tile.type === 'ATTRACTION' || tile.type === 'PARK';
                                                     const mustBuyOrAuction = isUnownedProperty && isPurchasable;
 
                                                     // Card Logic
@@ -537,7 +554,14 @@ export default function GameBoard() {
             </Paper>
 
             {/* Drawers & Modals */}
-            <InventoryDrawer isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} gameState={gameState} user={user} sendMessage={sendMessage} />
+            <InventoryDrawer
+                isOpen={isInventoryOpen}
+                onClose={() => { setIsInventoryOpen(false); setInventoryTargetId(null); }}
+                gameState={gameState}
+                user={user}
+                sendMessage={sendMessage}
+                targetPlayerId={inventoryTargetId || undefined}
+            />
             <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
 
@@ -553,6 +577,8 @@ export default function GameBoard() {
             <TileDetailModal
                 tile={selectedTile}
                 gameState={gameState}
+                user={user}
+                sendMessage={sendMessage}
                 onClose={() => setSelectedTile(null)}
             />
 

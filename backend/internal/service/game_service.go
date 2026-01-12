@@ -141,7 +141,7 @@ func (s *GameService) loadPropertiesAndLayout() {
 	rows, err := s.db.Query(`SELECT 
 		id, name, type, group_id, group_name, group_color, price, 
 		rent_base, rent_color_group, rent_1_house, rent_2_house, rent_3_house, rent_4_house, rent_hotel,
-		house_cost, hotel_cost, mortgage_value, unmortgage_value
+		rent_rule, house_cost, hotel_cost, mortgage_value, unmortgage_value
 		FROM properties`)
 	if err != nil {
 		log.Printf("Error loading properties: %v", err)
@@ -154,11 +154,12 @@ func (s *GameService) loadPropertiesAndLayout() {
 		var p domain.Property
 		var groupID, groupName, groupColor sql.NullString
 		var rentBase, rentColorGroup, r1, r2, r3, r4, rHotel, hCost, hotCost, mort, unmort sql.NullInt32
+		var rentRule sql.NullString
 
 		if err := rows.Scan(
 			&p.ID, &p.Name, &p.Type, &groupID, &groupName, &groupColor, &p.Price,
 			&rentBase, &rentColorGroup, &r1, &r2, &r3, &r4, &rHotel,
-			&hCost, &hotCost, &mort, &unmort,
+			&rentRule, &hCost, &hotCost, &mort, &unmort,
 		); err != nil {
 			log.Printf("Error scanning property %s: %v", p.ID, err)
 			continue
@@ -206,6 +207,9 @@ func (s *GameService) loadPropertiesAndLayout() {
 		}
 		if unmort.Valid {
 			p.UnmortgageValue = int(unmort.Int32)
+		}
+		if rentRule.Valid {
+			p.RentRule = rentRule.String
 		}
 
 		s.properties[p.ID] = p
@@ -370,6 +374,8 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleFinalizeAuction(game)
 	case "DRAW_CARD":
 		s.handleDrawCard(game, userID)
+	case "PAY_RENT":
+		s.handlePayRent(game, userID, action.Payload)
 	}
 }
 
@@ -404,7 +410,8 @@ func (s *GameService) handleStartAuction(game *domain.GameState, userID string, 
 		EndTime:    time.Now().Add(30 * time.Second), // 30s auction
 		IsActive:   true,
 	}
-	game.LastAction = "Subasta iniciada por " + req.PropertyID // Better to use Name if available
+	game.LastAction = "Subasta iniciada por " + req.PropertyID
+	s.addLog(game, "Subasta iniciada por "+req.PropertyID, "INFO")
 
 	s.broadcastGameState(game)
 }
@@ -454,6 +461,7 @@ func (s *GameService) handleBid(game *domain.GameState, userID string, payload j
 		game.ActiveAuction.EndTime = game.ActiveAuction.EndTime.Add(10 * time.Second)
 	}
 
+	s.addLog(game, bidderName+" ha pujado $"+strconv.Itoa(req.Amount), "INFO")
 	s.broadcastGameState(game)
 }
 
@@ -657,6 +665,7 @@ func (s *GameService) endAuction(game *domain.GameState) {
 		game.PropertyOwnership[game.ActiveAuction.PropertyID] = winnerID
 
 		game.LastAction = "¡Subasta finalizada! Ganador: " + game.ActiveAuction.BidderName
+		s.addLog(game, "¡Subasta finalizada! Ganador: "+game.ActiveAuction.BidderName+" por $"+strconv.Itoa(int(amount)), "SUCCESS")
 	} else {
 		game.LastAction = "¡Subasta finalizada! Sin ofertas."
 	}
@@ -699,7 +708,8 @@ func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, p
 	// 2. Execute Purchase
 	player.Balance -= int(prop.Price)
 	game.PropertyOwnership[req.PropertyID] = userID
-	game.LastAction = player.Name + " compró " + prop.Name + " por $" + strconv.Itoa(prop.Price) // Fix string cast
+	game.LastAction = player.Name + " compró " + prop.Name + " por $" + strconv.Itoa(prop.Price)
+	s.addLog(game, player.Name+" compró "+prop.Name+" por $"+strconv.Itoa(prop.Price), "SUCCESS")
 
 	// 3. Update Board UI (optional, if Board stores ownership too)
 	// We need to map PropertyID to Tile Index if we want to show it on board array
@@ -888,6 +898,13 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 		return
 	}
 
+	// Check if already rolled (and not doubles)
+	// If Dice are set (non-zero) and NOT doubles, prevent re-roll
+	if game.Dice[0] != 0 && game.Dice[0] != game.Dice[1] {
+		// Already rolled non-doubles
+		return
+	}
+
 	// 2. Roll Dice
 	d1 := rand.Intn(6) + 1
 	d2 := rand.Intn(6) + 1
@@ -1017,6 +1034,10 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 		}
 		s.addLog(game, "El turno pasa a "+nextName, "INFO")
 	}
+
+	// Clear Dice for next player
+	game.Dice = [2]int{0, 0}
+	game.DrawnCard = nil // Also clear drawn card state just in case
 
 	s.broadcastGameState(game)
 }
@@ -1167,7 +1188,8 @@ func (s *GameService) initializeBoard() []domain.Tile {
 				tile.Name = prop.Name
 				tile.Type = prop.Type
 				tile.Price = prop.Price
-				tile.Rent = prop.RentBase // Base rent current
+				tile.Rent = prop.RentBase     // Base rent current
+				tile.RentRule = prop.RentRule // Pass to frontend
 
 				// Full info
 				tile.RentBase = prop.RentBase
@@ -1201,13 +1223,18 @@ func (s *GameService) initializeBoard() []domain.Tile {
 }
 
 func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, diceRoll int) int {
+	ownerID, owned := game.PropertyOwnership[tile.PropertyID]
+	if !owned {
+		return 0
+	}
+
 	if tile.Type == "UTILITY" {
-		// Count utilities owned
-		ownerID := *tile.OwnerID
 		count := 0
 		for _, t := range game.Board {
-			if t.Type == "UTILITY" && t.OwnerID != nil && *t.OwnerID == ownerID {
-				count++
+			if t.Type == "UTILITY" {
+				if oid, ok := game.PropertyOwnership[t.PropertyID]; ok && oid == ownerID {
+					count++
+				}
 			}
 		}
 		if count == 2 {
@@ -1217,11 +1244,12 @@ func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, d
 	}
 
 	if tile.Type == "RAILROAD" {
-		ownerID := *tile.OwnerID
 		count := 0
 		for _, t := range game.Board {
-			if t.Type == "RAILROAD" && t.OwnerID != nil && *t.OwnerID == ownerID {
-				count++
+			if t.Type == "RAILROAD" {
+				if oid, ok := game.PropertyOwnership[t.PropertyID]; ok && oid == ownerID {
+					count++
+				}
 			}
 		}
 		switch count {
@@ -1256,11 +1284,10 @@ func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, d
 
 	// Base Rent - Check for Monopoly (Full Group)
 	if tile.GroupIdentifier != "" {
-		ownerID := *tile.OwnerID
 		allOwned := true
 		for _, t := range game.Board {
 			if t.GroupIdentifier == tile.GroupIdentifier {
-				if t.OwnerID == nil || *t.OwnerID != ownerID {
+				if oid, ok := game.PropertyOwnership[t.PropertyID]; !ok || oid != ownerID {
 					allOwned = false
 					break
 				}
@@ -1285,4 +1312,70 @@ func (s *GameService) getLayoutID(index int) string {
 		return val
 	}
 	return ""
+}
+
+func (s *GameService) handlePayRent(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		PropertyID string `json:"property_id"`
+		TargetID   string `json:"target_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	// Verify Ownership
+	if game.PropertyOwnership[req.PropertyID] != userID {
+		return
+	}
+
+	// Find Tile (to get updated BuildingCount if any, and type)
+	// We rely on game.Board having the static config + dynamic building count (if implemented)
+	var tile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tile = &game.Board[i]
+			break
+		}
+	}
+	if tile == nil {
+		return
+	}
+
+	// Verify Target
+	var target *domain.PlayerState
+	var owner *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == req.TargetID {
+			target = p
+		}
+		if p.UserID == userID {
+			owner = p
+		}
+	}
+	if target == nil || owner == nil {
+		return
+	}
+
+	// Calculate Rent
+	diceSum := 0
+	if len(game.Dice) >= 2 {
+		diceSum = game.Dice[0] + game.Dice[1]
+	}
+	rent := s.calculateRent(game, tile, diceSum)
+
+	if rent <= 0 {
+		return
+	}
+
+	// Transfer
+	amount := rent
+	if target.Balance < amount {
+		amount = target.Balance
+	}
+
+	target.Balance -= amount
+	owner.Balance += amount
+
+	s.addLog(game, target.Name+" pagó renta de $"+strconv.Itoa(amount)+" a "+owner.Name, "ALERT")
+	s.broadcastGameState(game)
 }

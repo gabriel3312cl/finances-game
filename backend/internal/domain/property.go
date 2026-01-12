@@ -15,6 +15,7 @@ type Property struct {
 	Rent3House      int    `json:"rent_3_house"`
 	Rent4House      int    `json:"rent_4_house"`
 	RentHotel       int    `json:"rent_hotel"`
+	RentRule        string `json:"rent_rule"`
 	HouseCost       int    `json:"house_cost"`
 	HotelCost       int    `json:"hotel_cost"`
 	MortgageValue   int    `json:"mortgage_value"`
