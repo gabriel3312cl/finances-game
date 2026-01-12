@@ -15,6 +15,14 @@ type GameState struct {
 	Logs              []EventLog        `json:"logs"`
 	TurnOrder         []string          `json:"turn_order"` // UserIDs in order
 	DrawnCard         *Card             `json:"drawn_card,omitempty"`
+	PendingRent       *PendingRent      `json:"pending_rent,omitempty"` // Manual rent collection
+}
+
+type PendingRent struct {
+	TargetID   string `json:"target_id"`   // The player who needs to pay
+	CreditorID string `json:"creditor_id"` // The owner who needs to press collect
+	Amount     int    `json:"amount"`
+	PropertyID string `json:"property_id"`
 }
 
 type Card struct {

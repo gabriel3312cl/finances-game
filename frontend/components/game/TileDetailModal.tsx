@@ -10,9 +10,10 @@ interface TileDetailModalProps {
     user: any;
     sendMessage: (action: string, payload: any) => void;
     onClose: () => void;
+    onPlayerClick?: (playerId: string) => void;
 }
 
-export default function TileDetailModal({ tile, gameState, user, sendMessage, onClose }: TileDetailModalProps) {
+export default function TileDetailModal({ tile, gameState, user, sendMessage, onClose, onPlayerClick }: TileDetailModalProps) {
     if (!tile) return null;
 
     const propertyId = tile.propertyId;
@@ -331,11 +332,40 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
                     )}
                 </Box>
 
+
+
+                {/* VISITORS */}
+                {(() => {
+                    const visitors = gameState?.players?.filter((p: any) => p.position === tile.id) || [];
+                    if (visitors.length === 0) return null;
+                    return (
+                        <Box sx={{ mt: 2, pt: 1, borderTop: '1px dashed grey', textAlign: 'center' }}>
+                            <Typography variant="overline" color="text.secondary">Jugadores aquí</Typography>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                                {visitors.map((p: any) => (
+                                    <Chip
+                                        key={p.user_id}
+                                        label={p.name}
+                                        onClick={() => onPlayerClick && onPlayerClick(p.user_id)}
+                                        sx={{
+                                            bgcolor: p.token_color,
+                                            color: getContrastColor(p.token_color),
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            '&:hover': { filter: 'brightness(0.9)' }
+                                        }}
+                                    />
+                                ))}
+                            </Box>
+                        </Box>
+                    );
+                })()}
+
                 <Box sx={{ textAlign: 'center', mt: 2 }}>
                     <Button onClick={onClose} sx={{ color: 'black', fontWeight: 'bold', border: '1px solid black' }}>CERRAR</Button>
                 </Box>
             </Box>
-        </Dialog>
+        </Dialog >
     );
 }
 

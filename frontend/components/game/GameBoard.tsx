@@ -439,8 +439,31 @@ export default function GameBoard() {
 
 
                                         {/* Actions */}
-                                        {isMyTurn && (
+                                        {((gameState.pending_rent && gameState.pending_rent.creditor_id === user?.user_id) || (isMyTurn)) && (
                                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                                                {/* Pending Rent Collection (For Creditor) */}
+                                                {gameState.pending_rent && gameState.pending_rent.creditor_id === user?.user_id && (
+                                                    <Paper sx={{ p: 2, bgcolor: 'error.dark', color: 'white', textAlign: 'center', mb: 2, animation: 'pulse 1.5s infinite' }}>
+                                                        <Typography variant="h6" fontWeight="bold">¡HAY RENTA POR COBRAR!</Typography>
+                                                        <Typography variant="body1">Jugador debe pagar: ${gameState.pending_rent.amount}</Typography>
+                                                        <Button
+                                                            variant="contained"
+                                                            color="warning"
+                                                            size="large"
+                                                            onClick={() => sendMessage('COLLECT_RENT', {})}
+                                                            sx={{ mt: 1, fontWeight: 'bold' }}
+                                                        >
+                                                            COBRAR RENTA
+                                                        </Button>
+                                                    </Paper>
+                                                )}
+
+                                                {/* Pending Rent Warning (For Debtor/Others) */}
+                                                {gameState.pending_rent && gameState.pending_rent.target_id === user?.user_id && (
+                                                    <Paper sx={{ p: 2, bgcolor: 'warning.dark', color: 'white', textAlign: 'center', mb: 2 }}>
+                                                        <Typography variant="subtitle1" fontWeight="bold">Esperando cobro de renta...</Typography>
+                                                    </Paper>
+                                                )}
                                                 {canRoll && (
                                                     <Button variant="contained" color="success" size="large" startIcon={<Casino />} onClick={() => sendMessage('ROLL_DICE', {})} sx={{ px: 4, py: 1.5, borderRadius: 8, fontSize: '1.2rem' }}>
                                                         {isDoubles ? 'LANZAR DE NUEVO (DOBLES)' : 'LANZAR DADOS'}
@@ -565,7 +588,7 @@ export default function GameBoard() {
             <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
 
-            {gameState.drawn_card && gameState.drawn_card.id !== hiddenCardId && (
+            {isMyTurn && gameState.drawn_card && gameState.drawn_card.id !== hiddenCardId && (
                 <CardModal
                     gameState={gameState}
                     user={user}
@@ -580,6 +603,11 @@ export default function GameBoard() {
                 user={user}
                 sendMessage={sendMessage}
                 onClose={() => setSelectedTile(null)}
+                onPlayerClick={(targetId) => {
+                    setSelectedTile(null);
+                    setInventoryTargetId(targetId);
+                    setIsInventoryOpen(true);
+                }}
             />
 
             {/* FABs */}

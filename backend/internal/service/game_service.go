@@ -376,6 +376,8 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleDrawCard(game, userID)
 	case "PAY_RENT":
 		s.handlePayRent(game, userID, action.Payload)
+	case "COLLECT_RENT": // New Manual Action
+		s.handleCollectRent(game, userID)
 	}
 }
 
@@ -969,16 +971,16 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 						if owner != nil {
 							rent := s.calculateRent(game, tile, total)
 
-							// Transfer
-							actualPay := rent
-							if currentPlayer.Balance < rent {
-								actualPay = currentPlayer.Balance // Bankruptcy logic later
+							// Manual Rent Logic: Set Pending Rent
+							game.PendingRent = &domain.PendingRent{
+								TargetID:   userID,
+								CreditorID: ownerID,
+								Amount:     rent,
+								PropertyID: tileID,
 							}
-							currentPlayer.Balance -= actualPay
-							owner.Balance += actualPay
 
-							desc += ". Cayó en " + prop.Name + ". Renta: $" + strconv.Itoa(rent)
-							s.addLog(game, currentPlayer.Name+" pagó $"+strconv.Itoa(actualPay)+" de renta a "+owner.Name, "ALERT")
+							desc += ". Cayó en " + prop.Name + ". Renta potencial: $" + strconv.Itoa(rent)
+							s.addLog(game, currentPlayer.Name+" cayó en "+prop.Name+". Esperando que "+owner.Name+" cobre la renta.", "ALERT")
 						}
 					}
 				} else {
@@ -1037,8 +1039,57 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 
 	// Clear Dice for next player
 	game.Dice = [2]int{0, 0}
-	game.DrawnCard = nil // Also clear drawn card state just in case
+	game.DrawnCard = nil
+	// Rent Forfeit Rule: If not collected by end of turn, it is lost.
+	if game.PendingRent != nil {
+		s.addLog(game, "Renta no cobrada ha expirado.", "INFO")
+		game.PendingRent = nil
+	}
 
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleCollectRent(game *domain.GameState, userID string) {
+	if game.PendingRent == nil {
+		s.addLog(game, "No hay renta pendiente para cobrar (ya fue cobrada o expiró).", "INFO")
+		return
+	}
+	if game.PendingRent.CreditorID != userID {
+		s.addLog(game, "Solo el propietario puede cobrar esta renta.", "ALERT")
+		return // Only creditor can collect
+	}
+
+	// Execute Transfer
+	rent := game.PendingRent.Amount
+	targetID := game.PendingRent.TargetID
+
+	var target, creditor *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == targetID {
+			target = p
+		}
+		if p.UserID == userID {
+			creditor = p
+		}
+	}
+
+	if target != nil && creditor != nil {
+		actualPay := rent
+		// Bankruptcy logic simplified
+		if target.Balance < rent {
+			// Take all they have (or debt logic if implemented)
+			// For now, allow negative? Or just take balance?
+			// User wants negative balance restrictions, so going negative is allowed mathematically but blocks actions.
+			// Let's just deduct.
+		}
+
+		target.Balance -= actualPay
+		creditor.Balance += actualPay
+
+		s.addLog(game, creditor.Name+" cobró la renta de $"+strconv.Itoa(actualPay)+" a "+target.Name, "SUCCESS")
+	}
+
+	game.PendingRent = nil // Cleared
 	s.broadcastGameState(game)
 }
 
@@ -1323,59 +1374,27 @@ func (s *GameService) handlePayRent(game *domain.GameState, userID string, paylo
 		return
 	}
 
-	// Verify Ownership
-	if game.PropertyOwnership[req.PropertyID] != userID {
+	// Validation: Must have PendingRent matching this request
+	// This ensures we don't double charge or charge arbitrarily.
+	if game.PendingRent == nil {
+		s.addLog(game, "Acción inválida: No hay renta pendiente para cobrar.", "ALERT")
 		return
 	}
 
-	// Find Tile (to get updated BuildingCount if any, and type)
-	// We rely on game.Board having the static config + dynamic building count (if implemented)
-	var tile *domain.Tile
-	for i := range game.Board {
-		if game.Board[i].PropertyID == req.PropertyID {
-			tile = &game.Board[i]
-			break
-		}
+	// Strict Match: Creditor must be User, Target must match, Property must match
+	if game.PendingRent.CreditorID != userID {
+		s.addLog(game, "No tienes permiso para cobrar esta renta.", "ALERT")
+		return
 	}
-	if tile == nil {
+	if game.PendingRent.TargetID != req.TargetID {
+		s.addLog(game, "El deudor no coincide con la renta pendiente.", "ALERT")
+		return
+	}
+	if game.PendingRent.PropertyID != req.PropertyID {
+		s.addLog(game, "La propiedad no coincide con la renta pendiente.", "ALERT")
 		return
 	}
 
-	// Verify Target
-	var target *domain.PlayerState
-	var owner *domain.PlayerState
-	for _, p := range game.Players {
-		if p.UserID == req.TargetID {
-			target = p
-		}
-		if p.UserID == userID {
-			owner = p
-		}
-	}
-	if target == nil || owner == nil {
-		return
-	}
-
-	// Calculate Rent
-	diceSum := 0
-	if len(game.Dice) >= 2 {
-		diceSum = game.Dice[0] + game.Dice[1]
-	}
-	rent := s.calculateRent(game, tile, diceSum)
-
-	if rent <= 0 {
-		return
-	}
-
-	// Transfer
-	amount := rent
-	if target.Balance < amount {
-		amount = target.Balance
-	}
-
-	target.Balance -= amount
-	owner.Balance += amount
-
-	s.addLog(game, target.Name+" pagó renta de $"+strconv.Itoa(amount)+" a "+owner.Name, "ALERT")
-	s.broadcastGameState(game)
+	// Delegate to single source of truth handler
+	s.handleCollectRent(game, userID)
 }
