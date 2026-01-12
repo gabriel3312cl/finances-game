@@ -5,6 +5,7 @@ import BoardTile from './BoardTile';
 import { useGameStore } from '@/store/gameStore';
 import { useBoardConfig } from '@/hooks/useGameQueries';
 import PlayerToken from './PlayerToken';
+import RollingOrderPhase from './RollingOrderPhase';
 
 import CardModal from './CardModal';
 import InventoryDrawer from './InventoryDrawer';
@@ -92,6 +93,7 @@ export default function GameBoard() {
     // Derived States
     const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
     const isMyTurn = gameState?.current_turn_id === user?.user_id;
+    const isGameActive = gameState?.status === 'ACTIVE';
     const canStart = isHost && gameState?.status === 'WAITING' && (gameState?.players?.length >= 2);
 
     // Helper to check if I can End Turn (simple: I rolled dice)
@@ -159,6 +161,11 @@ export default function GameBoard() {
 
     if (!gameState) return <Box sx={{ p: 4, color: 'white' }}>Cargando partida...</Box>;
 
+    // Show Rolling Order Phase if game is in that status
+    if (gameState.status === 'ROLLING_ORDER') {
+        return <RollingOrderPhase gameState={gameState} user={user} sendMessage={sendMessage} />;
+    }
+
     const myPlayer = gameState.players?.find((p: any) => p.user_id === user.user_id);
 
     return (
@@ -204,7 +211,11 @@ export default function GameBoard() {
                             const end = start + 16;
                             const indices = [];
                             for (let i = start; i <= end; i++) indices.push(i % 64);
-                            return indices.map(i => {
+
+                            // Reverse for lanes 0 (bottom) and 3 (right) to match MiniMap orientation
+                            const tilesToRender = (currentLane === 0 || currentLane === 3) ? indices.reverse() : indices;
+
+                            return tilesToRender.map(i => {
                                 const tile = boardTiles.find(t => t.id === i);
                                 if (!tile) return null;
                                 return (
@@ -223,6 +234,82 @@ export default function GameBoard() {
                             });
                         })()}
                     </Box>
+
+                    {/* MINIMAP (Below Active Lane) */}
+                    <Paper sx={{
+                        width: 240, height: 240,
+                        bgcolor: '#1e293b', opacity: 0.95, border: '2px solid grey',
+                        display: { xs: 'none', md: 'grid' },
+                        gridTemplateColumns: 'repeat(17, 1fr)',
+                        gridTemplateRows: 'repeat(17, 1fr)',
+                        p: 0.5,
+                        gap: '1px',
+                        mt: 2
+                    }}>
+                        {(() => {
+                            // Render full 17x17 grid (64 tiles + empty center)
+                            const cells = [];
+                            // We iterate logical board positions 0..63 and place them
+                            const gridCells = Array(17 * 17).fill(null);
+
+                            boardTiles.forEach(tile => {
+                                const { row, col } = getGridPosition(tile.id);
+                                const indexIdx = (row - 1) * 17 + (col - 1);
+                                if (indexIdx >= 0 && indexIdx < gridCells.length) {
+                                    gridCells[indexIdx] = tile;
+                                }
+                            });
+
+
+                            return gridCells.map((tile, i) => {
+                                // Lanes mapping
+                                let isFocused = false;
+                                let laneIndex = -1;
+
+                                if (tile) {
+                                    const id = tile.id;
+                                    if (id < 16) laneIndex = 0;
+                                    else if (id < 32) laneIndex = 1;
+                                    else if (id < 48) laneIndex = 2;
+                                    else laneIndex = 3;
+
+                                    // Special case for shared corners if we want smoother feel, but explicit ranges work.
+                                    // Adjusted ranges slightly to include start corner in previous lane? 
+                                    // Let's stick to the visual ranges:
+                                    // Lane 0: 0-16. Lane 1: 16-32. Lane 2: 32-48. Lane 3: 48-63.
+
+                                    if (currentLane === 0 && (id >= 0 && id <= 16)) isFocused = true;
+                                    else if (currentLane === 1 && (id >= 16 && id <= 32)) isFocused = true;
+                                    else if (currentLane === 2 && (id >= 32 && id <= 48)) isFocused = true;
+                                    else if (currentLane === 3 && (id >= 48 && id <= 63)) isFocused = true;
+                                }
+
+                                if (!tile) return <Box key={`empty-${i}`} sx={{ bgcolor: 'transparent' }} />;
+
+                                // Check if player is here
+                                const playerHere = gameState.players.find((p: any) => p.position === tile.id);
+
+                                return (
+                                    <Box
+                                        key={tile.id}
+                                        onClick={() => {
+                                            if (laneIndex !== -1) setCurrentLane(laneIndex);
+                                        }}
+                                        sx={{
+                                            width: '100%', height: '100%',
+                                            bgcolor: playerHere ? playerHere.token_color : (tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0')),
+                                            border: playerHere ? '1px solid white' : 'none',
+                                            borderRadius: '2px',
+                                            opacity: isFocused ? 1 : 0.3, // Dim non-focused lanes
+                                            transition: 'opacity 0.3s',
+                                            cursor: 'pointer',
+                                            '&:hover': { opacity: 1, transform: 'scale(1.1)', zIndex: 10 }
+                                        }}>
+                                    </Box>
+                                );
+                            });
+                        })()}
+                    </Paper>
                 </Box>
 
                 {/* DICE & ACTION PANEL (Bottom Overlay) */}
@@ -238,13 +325,20 @@ export default function GameBoard() {
                     {/* Action Buttons Logic */}
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
 
-                        {/* 1. Roll Dice (If my turn and haven't rolled) */}
-                        {isMyTurn && canRoll && (
+                        {/* 0. Start Game (Host only, when WAITING and 2+ players) */}
+                        {canStart && (
+                            <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', {})}>
+                                INICIAR JUEGO
+                            </Button>
+                        )}
+
+                        {/* 1. Roll Dice (If my turn, game active, and haven't rolled) */}
+                        {isGameActive && isMyTurn && canRoll && (
                             <Button variant="contained" color="success" size="large" onClick={() => sendMessage('ROLL_DICE', {})}>LANZAR DADOS</Button>
                         )}
 
                         {/* 2. Post-Roll Actions (Buy, Draw, etc) */}
-                        {isMyTurn && hasRolledAny && (() => {
+                        {isGameActive && isMyTurn && hasRolledAny && (() => {
                             const me = gameState.players.find((p: any) => p.user_id === user.user_id);
                             if (!me) return null;
                             const tile = gameState?.board?.[me.position];
@@ -275,82 +369,6 @@ export default function GameBoard() {
                         )}
                     </Box>
                 </Box>
-
-                {/* MINIMAP (Absolute Positioned Top Right) */}
-                <Paper sx={{
-                    position: 'absolute', top: 16, right: 16, width: 240, height: 240,
-                    bgcolor: '#1e293b', opacity: 0.95, border: '2px solid grey',
-                    display: { xs: 'none', md: 'grid' },
-                    gridTemplateColumns: 'repeat(17, 1fr)',
-                    gridTemplateRows: 'repeat(17, 1fr)',
-                    p: 0.5,
-                    gap: '1px',
-                    zIndex: 20
-                }}>
-                    {(() => {
-                        // Render full 17x17 grid (64 tiles + empty center)
-                        const cells = [];
-                        // We iterate logical board positions 0..63 and place them
-                        const gridCells = Array(17 * 17).fill(null);
-
-                        boardTiles.forEach(tile => {
-                            const { row, col } = getGridPosition(tile.id);
-                            const indexIdx = (row - 1) * 17 + (col - 1);
-                            if (indexIdx >= 0 && indexIdx < gridCells.length) {
-                                gridCells[indexIdx] = tile;
-                            }
-                        });
-
-
-                        return gridCells.map((tile, i) => {
-                            // Lanes mapping
-                            let isFocused = false;
-                            let laneIndex = -1;
-
-                            if (tile) {
-                                const id = tile.id;
-                                if (id < 16) laneIndex = 0;
-                                else if (id < 32) laneIndex = 1;
-                                else if (id < 48) laneIndex = 2;
-                                else laneIndex = 3;
-
-                                // Special case for shared corners if we want smoother feel, but explicit ranges work.
-                                // Adjusted ranges slightly to include start corner in previous lane? 
-                                // Let's stick to the visual ranges:
-                                // Lane 0: 0-16. Lane 1: 16-32. Lane 2: 32-48. Lane 3: 48-63.
-
-                                if (currentLane === 0 && (id >= 0 && id <= 16)) isFocused = true;
-                                else if (currentLane === 1 && (id >= 16 && id <= 32)) isFocused = true;
-                                else if (currentLane === 2 && (id >= 32 && id <= 48)) isFocused = true;
-                                else if (currentLane === 3 && (id >= 48 && id <= 63)) isFocused = true;
-                            }
-
-                            if (!tile) return <Box key={`empty-${i}`} sx={{ bgcolor: 'transparent' }} />;
-
-                            // Check if player is here
-                            const playerHere = gameState.players.find((p: any) => p.position === tile.id);
-
-                            return (
-                                <Box
-                                    key={tile.id}
-                                    onClick={() => {
-                                        if (laneIndex !== -1) setCurrentLane(laneIndex);
-                                    }}
-                                    sx={{
-                                        width: '100%', height: '100%',
-                                        bgcolor: playerHere ? playerHere.token_color : (tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0')),
-                                        border: playerHere ? '1px solid white' : 'none',
-                                        borderRadius: '2px',
-                                        opacity: isFocused ? 1 : 0.3, // Dim non-focused lanes
-                                        transition: 'opacity 0.3s',
-                                        cursor: 'pointer',
-                                        '&:hover': { opacity: 1, transform: 'scale(1.1)', zIndex: 10 }
-                                    }}>
-                                </Box>
-                            );
-                        });
-                    })()}
-                </Paper>
             </Box>
 
             {/* LOG CONSOLE */}
@@ -384,6 +402,16 @@ export default function GameBoard() {
                 user={user}
                 sendMessage={sendMessage}
                 targetPlayerId={inventoryTargetId || undefined}
+                onPropertyClick={(inventoryTile) => {
+                    const match = boardTiles.find(t => t.id === inventoryTile.id);
+                    if (match) {
+                        setIsInventoryOpen(false);
+                        setSelectedTile(match);
+                        // Also jump to lane
+                        const lane = Math.floor(match.id / 16);
+                        setCurrentLane(Math.min(lane, 3));
+                    }
+                }}
             />
             <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
@@ -397,18 +425,20 @@ export default function GameBoard() {
                 />
             )}
 
-            <TileDetailModal
-                tile={selectedTile}
-                gameState={gameState}
-                user={user}
-                sendMessage={sendMessage}
-                onClose={() => setSelectedTile(null)}
-                onPlayerClick={(targetId) => {
-                    setSelectedTile(null);
-                    setInventoryTargetId(targetId);
-                    setIsInventoryOpen(true);
-                }}
-            />
+            {selectedTile && selectedTile.propertyId && (
+                <TileDetailModal
+                    tile={selectedTile}
+                    gameState={gameState}
+                    user={user}
+                    sendMessage={sendMessage}
+                    onClose={() => setSelectedTile(null)}
+                    onPlayerClick={(targetId) => {
+                        setSelectedTile(null);
+                        setInventoryTargetId(targetId);
+                        setIsInventoryOpen(true);
+                    }}
+                />
+            )}
 
             {/* FABs */}
             <Box sx={{ position: 'fixed', bottom: 180, right: 24, zIndex: 60 }}>

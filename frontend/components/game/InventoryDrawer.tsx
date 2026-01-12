@@ -7,6 +7,7 @@ import {
     ListItemText, Button, TextField, Chip
 } from '@mui/material';
 import { Close, AccountBalance, Business, AttachMoney } from '@mui/icons-material';
+import PlayerToken from './PlayerToken';
 
 interface InventoryDrawerProps {
     isOpen: boolean;
@@ -14,9 +15,10 @@ interface InventoryDrawerProps {
     gameState: any;
     user: any;
     sendMessage: (action: string, payload: any) => void;
+    onPropertyClick?: (tile: any) => void;
 }
 
-export default function InventoryDrawer({ isOpen, onClose, gameState, user, sendMessage, targetPlayerId }: InventoryDrawerProps & { targetPlayerId?: string }) {
+export default function InventoryDrawer({ isOpen, onClose, gameState, user, sendMessage, targetPlayerId, onPropertyClick }: InventoryDrawerProps & { targetPlayerId?: string }) {
     const [activeTab, setActiveTab] = useState(0);
     const [loanAmount, setLoanAmount] = useState('');
 
@@ -43,6 +45,9 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
             tile.type === 'ATTRACTION' ||
             tile.type === 'PARK'
         );
+    }).sort((a: any, b: any) => {
+        // Sort by Price Descending (Expensive First -> implicitly sorts by Color Group Value)
+        return (b.price || 0) - (a.price || 0);
     });
 
     const totalAssetValue = myProperties.reduce((acc: any, tile: any) => acc + (tile.price || 0), 0);
@@ -128,18 +133,46 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                                 </Typography>
                             ) : (
                                 <List>
-                                    {myProperties.map((tile: any) => (
-                                        <Card key={tile.id} variant="outlined" sx={{ mb: 1, display: 'flex', overflow: 'hidden' }}>
-                                            <Box sx={{ width: 12, bgcolor: tile.group_color || 'grey.500' }} />
-                                            <CardContent sx={{ flex: 1, py: 1, px: 2, '&:last-child': { pb: 1 } }}>
-                                                <Typography variant="subtitle2" fontWeight="bold">{tile.name}</Typography>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <Typography variant="caption" color="text.secondary">{tile.group_name}</Typography>
-                                                    <Chip size="small" label={`$${tile.price}`} color="primary" variant="outlined" />
-                                                </Box>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
+                                    {myProperties.map((tile: any) => {
+                                        // Find players on this tile
+                                        const visitors = gameState.players?.filter((p: any) => p.position === tile.id && p.user_id !== user.user_id) || [];
+
+                                        return (
+                                            <Card
+                                                key={tile.id}
+                                                variant="outlined"
+                                                onClick={() => {
+                                                    if (onPropertyClick) onPropertyClick(tile);
+                                                }}
+                                                sx={{
+                                                    mb: 1, display: 'flex', overflow: 'visible', position: 'relative',
+                                                    cursor: onPropertyClick ? 'pointer' : 'default',
+                                                    transition: 'transform 0.1s, border-color 0.1s',
+                                                    '&:hover': onPropertyClick ? { transform: 'scale(1.02)', borderColor: 'primary.main', zIndex: 10 } : {}
+                                                }}
+                                            >
+                                                {/* VISITOR AVATARS */}
+                                                {visitors.length > 0 && (
+                                                    <Box sx={{ position: 'absolute', top: -8, right: -8, display: 'flex', gap: -1 }}>
+                                                        {visitors.map((v: any) => (
+                                                            <Box key={v.user_id} sx={{ width: 24, height: 24, border: '2px solid white', borderRadius: '50%', overflow: 'hidden', boxShadow: 2 }}>
+                                                                <PlayerToken color={v.token_color} name={v.name} isCurrentTurn={false} />
+                                                            </Box>
+                                                        ))}
+                                                    </Box>
+                                                )}
+
+                                                <Box sx={{ width: 12, bgcolor: tile.group_color || 'grey.500' }} />
+                                                <CardContent sx={{ flex: 1, py: 1, px: 2, '&:last-child': { pb: 1 } }}>
+                                                    <Typography variant="subtitle2" fontWeight="bold">{tile.name}</Typography>
+                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <Typography variant="caption" color="text.secondary">{tile.group_name}</Typography>
+                                                        <Chip size="small" label={`$${tile.price}`} color="primary" variant="outlined" />
+                                                    </Box>
+                                                </CardContent>
+                                            </Card>
+                                        )
+                                    })}
                                 </List>
                             )}
                         </Box>

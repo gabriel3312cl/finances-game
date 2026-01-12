@@ -13,7 +13,8 @@ type GameState struct {
 	PropertyOwnership map[string]string `json:"property_ownership"` // PropertyID -> OwnerUserID
 	TileVisits        map[int]int       `json:"tile_visits"`        // TileIndex -> VisitCount
 	Logs              []EventLog        `json:"logs"`
-	TurnOrder         []string          `json:"turn_order"` // UserIDs in order
+	TurnOrder         []string          `json:"turn_order"`            // UserIDs in order
+	OrderRolls        map[string]int    `json:"order_rolls,omitempty"` // UserID -> dice roll for turn order
 	DrawnCard         *Card             `json:"drawn_card,omitempty"`
 	PendingRent       *PendingRent      `json:"pending_rent,omitempty"` // Manual rent collection
 }

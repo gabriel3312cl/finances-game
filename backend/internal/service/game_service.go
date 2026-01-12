@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"math/rand"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -893,7 +894,12 @@ func (s *GameService) handlePayLoan(game *domain.GameState, userID string, paylo
 }
 
 func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
-	// 1. Verify Turn
+	// 0. Verify Game is Active
+	if game.Status != domain.GameStatusActive {
+		s.addLog(game, "El juego aún no ha comenzado", "ALERT")
+		return
+	}
+
 	// 1. Verify Turn
 	if game.CurrentTurnID != userID {
 		// Ignore if not their turn
@@ -989,6 +995,23 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 			} else {
 				desc += ". Cayó en " + prop.Name + " (Sin dueño)"
 			}
+		} else {
+			// Special Tiles Logic
+			switch newPos {
+			case 5: // Income Tax
+				currentPlayer.Balance -= 200
+				desc += ". Pagó Impuesto sobre la Renta ($200)"
+				s.addLog(game, currentPlayer.Name+" pagó impuesto sobre la renta ($200)", "ALERT")
+			case 62: // Luxury Tax
+				currentPlayer.Balance -= 100
+				desc += ". Pagó Impuesto de Lujo ($100)"
+				s.addLog(game, currentPlayer.Name+" pagó impuesto de lujo ($100)", "ALERT")
+			case 48: // Go To Jail
+				currentPlayer.Position = 16 // Jail
+				currentPlayer.InJail = true
+				desc += ". ¡Vaya a la Cárcel!"
+				s.addLog(game, currentPlayer.Name+" fue enviado a la cárcel", "ALERT")
+			}
 		}
 
 		game.LastAction = desc
@@ -1049,6 +1072,101 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 	s.broadcastGameState(game)
 }
 
+func (s *GameService) handleStartGame(game *domain.GameState, userID string) {
+	// Only host can start
+	if game.Status != domain.GameStatusWaiting {
+		return
+	}
+
+	// Require minimum 2 players
+	if len(game.Players) < 2 {
+		s.addLog(game, "Se requieren al menos 2 jugadores para iniciar el juego", "ALERT")
+		s.broadcastGameState(game)
+		return
+	}
+
+	// Transition to ROLLING_ORDER phase
+	game.Status = domain.GameStatusRollingOrder
+	game.OrderRolls = make(map[string]int)
+	game.LastAction = "¡Fase de tirada para orden de turnos!"
+	s.addLog(game, "Cada jugador debe tirar los dados para determinar el orden de juego", "INFO")
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleRollOrder(game *domain.GameState, userID string) {
+	// Verify game is in ROLLING_ORDER phase
+	if game.Status != domain.GameStatusRollingOrder {
+		return
+	}
+
+	// Check if player already rolled
+	if _, hasRolled := game.OrderRolls[userID]; hasRolled {
+		return
+	}
+
+	// Find player
+	var player *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			player = p
+			break
+		}
+	}
+	if player == nil {
+		return
+	}
+
+	// Roll dice
+	d1 := rand.Intn(6) + 1
+	d2 := rand.Intn(6) + 1
+	total := d1 + d2
+
+	// Store roll
+	game.OrderRolls[userID] = total
+	s.addLog(game, player.Name+" sacó "+strconv.Itoa(total)+" ("+strconv.Itoa(d1)+"+"+strconv.Itoa(d2)+")", "DICE")
+
+	// Check if all players have rolled
+	if len(game.OrderRolls) == len(game.Players) {
+		// Determine turn order
+		type rollResult struct {
+			userID string
+			roll   int
+			name   string
+		}
+		var results []rollResult
+		for _, p := range game.Players {
+			results = append(results, rollResult{
+				userID: p.UserID,
+				roll:   game.OrderRolls[p.UserID],
+				name:   p.Name,
+			})
+		}
+
+		// Sort by roll descending (highest first)
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].roll > results[j].roll
+		})
+
+		// Set turn order
+		game.TurnOrder = []string{}
+		for _, r := range results {
+			game.TurnOrder = append(game.TurnOrder, r.userID)
+		}
+
+		// Set first player
+		game.CurrentTurnID = game.TurnOrder[0]
+
+		// Transition to ACTIVE
+		game.Status = domain.GameStatusActive
+		game.OrderRolls = nil // Clear rolls
+
+		s.addLog(game, "¡Orden de turnos establecido! Comienza "+results[0].name, "SUCCESS")
+		game.LastAction = "El juego ha comenzado. Turno de " + results[0].name
+	}
+
+	s.broadcastGameState(game)
+}
+
 func (s *GameService) handleCollectRent(game *domain.GameState, userID string) {
 	if game.PendingRent == nil {
 		s.addLog(game, "No hay renta pendiente para cobrar (ya fue cobrada o expiró).", "INFO")
@@ -1091,106 +1209,6 @@ func (s *GameService) handleCollectRent(game *domain.GameState, userID string) {
 
 	game.PendingRent = nil // Cleared
 	s.broadcastGameState(game)
-}
-
-func (s *GameService) handleStartGame(game *domain.GameState, userID string) {
-	// Only Host can start? For now anyone.
-	if game.Status != domain.GameStatusWaiting {
-		return
-	}
-	if len(game.Players) < 2 {
-		return // Minimum 2 players
-	}
-
-	game.Status = domain.GameStatusRollingOrder
-	s.addLog(game, "¡Juego Iniciado! Los jugadores deben lanzar dados para el orden.", "INFO")
-
-	// Reset any previous state if needed
-	game.TurnOrder = []string{}
-	// Note: We use PropertyOwnership as "Rolled Value" temporary storage?
-	// Or define a new map/struct?
-	// Simplified: We can store their roll in "Position" temporarily since they are all at 0 anyway?
-	// No, that messes up GO.
-	// Let's us use LastAction or a temp map log?
-	// Actually, easier to just add a temporary map or repurpose something.
-	// Let's repurpose 'TileVisits' key -1 -> Map[UserID]RollValue? No.
-	// We'll just filter logs or add a field if we really need to persistence.
-	// For MVP, we trust the logs or frontend state? No, backend must know.
-	// Let's assume we proceed immediately.
-
-	s.broadcastGameState(game)
-}
-
-// Temporary storage for order rolls (in memory). Ideally should be in DB/GameState
-var orderRolls = make(map[string]map[string]int) // GameID -> UserID -> Roll
-
-func (s *GameService) handleRollOrder(game *domain.GameState, userID string) {
-	if game.Status != domain.GameStatusRollingOrder {
-		return
-	}
-
-	// Check if already rolled
-	if orderRolls[game.GameID] == nil {
-		orderRolls[game.GameID] = make(map[string]int)
-	}
-	if _, ok := orderRolls[game.GameID][userID]; ok {
-		return
-	}
-
-	roll := rand.Intn(12) + 2 // 2-12
-	orderRolls[game.GameID][userID] = roll
-
-	s.addLog(game, getPlayerName(game, userID)+" lanzó "+strconv.Itoa(roll)+" para iniciativa.", "INFO")
-
-	// Check if all rolled
-	if len(orderRolls[game.GameID]) == len(game.Players) {
-		// All rolled, determine order
-		// Sort players by Roll descending
-		rolls := orderRolls[game.GameID]
-
-		// Create a slice of struct to sort
-		type pRoll struct {
-			UID  string
-			Roll int
-		}
-		var sorted []pRoll
-		for uid, r := range rolls {
-			sorted = append(sorted, pRoll{uid, r})
-		}
-
-		// Simple Bubble Sort
-		for i := 0; i < len(sorted); i++ {
-			for j := 0; j < len(sorted)-i-1; j++ {
-				if sorted[j].Roll < sorted[j+1].Roll {
-					sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-				}
-			}
-		}
-
-		// Set Order
-		game.TurnOrder = []string{}
-		for _, pr := range sorted {
-			game.TurnOrder = append(game.TurnOrder, pr.UID)
-		}
-
-		game.CurrentTurnID = game.TurnOrder[0]
-		game.Status = domain.GameStatusActive
-		s.addLog(game, "¡Orden de turno determinado! "+getPlayerName(game, game.CurrentTurnID)+" comienza.", "SUCCESS")
-
-		// Cleanup
-		delete(orderRolls, game.GameID)
-	}
-
-	s.broadcastGameState(game)
-}
-
-func getPlayerName(game *domain.GameState, userID string) string {
-	for _, p := range game.Players {
-		if p.UserID == userID {
-			return p.Name
-		}
-	}
-	return "Unknown"
 }
 
 func (s *GameService) broadcastGameState(game *domain.GameState) {
