@@ -13,7 +13,7 @@ import TradeModal from './TradeModal';
 import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
-import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut } from '@mui/icons-material';
+import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake } from '@mui/icons-material';
 
 export default function GameBoard() {
     // State from Store
@@ -76,7 +76,10 @@ export default function GameBoard() {
 
     // Local UI State
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+    const [isTradeOpen, setIsTradeOpen] = useState(false);
     const [showHeatmap, setShowHeatmap] = useState(false);
+    const [logHeight, setLogHeight] = useState(160);
+    const [isDraggingLogs, setIsDraggingLogs] = useState(false);
     const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
     const [hiddenCardId, setHiddenCardId] = useState<number | null>(null);
     const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
@@ -104,6 +107,38 @@ export default function GameBoard() {
     // User must be responsible to Roll first. We can hide Roll button if already rolled 
     // BUT we don't have that field yet. We will just trust the flow or use Log check.
     const lastLog = gameState?.logs?.[gameState.logs.length - 1];
+
+    // Log Resize Handlers
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsDraggingLogs(true);
+        e.preventDefault();
+    };
+
+    const handleMouseUp = React.useCallback(() => {
+        setIsDraggingLogs(false);
+    }, []);
+
+    const handleMouseMove = React.useCallback((e: MouseEvent) => {
+        if (!isDraggingLogs) return;
+        const newHeight = window.innerHeight - e.clientY;
+        if (newHeight > 100 && newHeight < 600) { // Limit min/max height
+            setLogHeight(newHeight);
+        }
+    }, [isDraggingLogs]);
+
+    useEffect(() => {
+        if (isDraggingLogs) {
+            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('mousemove', handleMouseMove);
+        } else {
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('mousemove', handleMouseMove);
+        }
+        return () => {
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('mousemove', handleMouseMove);
+        }
+    }, [isDraggingLogs, handleMouseUp, handleMouseMove]);
 
     // Dice Logic for UI
     const logicDice = gameState?.dice || [0, 0];
@@ -165,31 +200,6 @@ export default function GameBoard() {
 
     return (
         <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#0f172a', overflow: 'hidden' }}>
-
-            {/* TOP BAR */}
-            <Box sx={{ p: 1, bgcolor: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10, borderBottom: 1, borderColor: 'grey.800' }}>
-                <Typography variant="h6" sx={{ color: 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Casino color="warning" /> MONOPOLY FT
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-
-                    {/* My Player Info */}
-                    {myPlayer && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'rgba(255,255,255,0.05)', px: 1.5, py: 0.5, borderRadius: 2 }}>
-                            <Box sx={{ width: 24, height: 24 }}>
-                                <PlayerToken color={myPlayer.token_color} name={myPlayer.name} isCurrentTurn={false} />
-                            </Box>
-                            <Typography variant="body2" color="white" fontWeight="bold">
-                                ${myPlayer.balance}
-                            </Typography>
-                        </Box>
-                    )}
-
-                    <Typography variant="body2" sx={{ color: 'white', bgcolor: 'primary.main', px: 1, borderRadius: 1 }}>
-                        Turno: {gameState.players.find((p: any) => p.user_id === gameState.current_turn_id)?.name || '...'}
-                    </Typography>
-                </Box>
-            </Box>
 
             {/* MAIN CONTENT SPLIT */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
@@ -368,17 +378,35 @@ export default function GameBoard() {
             </Box>
 
             {/* LOG CONSOLE */}
-            <Paper sx={{ height: 160, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+            <Paper sx={{ height: logHeight, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10, position: 'relative' }}>
+                {/* Resize Handle */}
+                <Box
+                    onMouseDown={handleMouseDown}
+                    sx={{
+                        height: 8,
+                        width: '100%',
+                        bgcolor: 'grey.900',
+                        cursor: 'ns-resize',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        borderTop: '1px solid #333',
+                        '&:hover': { bgcolor: 'primary.main' }
+                    }}
+                >
+                    <Box sx={{ width: 40, height: 3, bgcolor: 'grey.600', borderRadius: 2 }} />
+                </Box>
+
                 <Box sx={{ px: 2, py: 0.5, bgcolor: 'grey.900', borderBottom: 1, borderColor: 'grey.800', display: 'flex', alignItems: 'center', gap: 1 }}>
                     <History fontSize="small" color="disabled" />
                     <Typography variant="caption" color="grey.500" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Registro de Eventos</Typography>
                 </Box>
-                <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace' }}>
-                    {gameState.logs?.map((log: any, i: number) => (
-                        <ListItem key={i} sx={{ py: 0.2 }}>
+                <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
+                    {[...(gameState.logs || [])].reverse().map((log: any, i: number) => (
+                        <ListItem key={i} sx={{ py: 0, minHeight: 20 }}>
                             <ListItemText
                                 primary={
-                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type) }}>
+                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type), lineHeight: 1.2 }}>
                                         <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
                                         {translateLog(log.message)}
                                     </Typography>
@@ -386,7 +414,7 @@ export default function GameBoard() {
                             />
                         </ListItem>
                     ))}
-                    <div ref={logEndRef} />
+                    {/* Auto-scroll removed since we are showing newest at top */}
                 </List>
             </Paper>
 
@@ -403,13 +431,20 @@ export default function GameBoard() {
                     if (match) {
                         setIsInventoryOpen(false);
                         setSelectedTile(match);
-                        // Also jump to lane
                         const lane = Math.floor(match.id / 16);
                         setCurrentLane(Math.min(lane, 3));
                     }
                 }}
             />
-            <TradeModal gameState={gameState} user={user} sendMessage={sendMessage} />
+
+            <TradeModal
+                gameState={gameState}
+                user={user}
+                sendMessage={sendMessage}
+                isOpen={isTradeOpen}
+                onClose={() => setIsTradeOpen(false)}
+            />
+
             <AuctionModal gameState={gameState} user={user} sendMessage={sendMessage} />
 
             {isMyTurn && gameState?.drawn_card && gameState.drawn_card.id !== hiddenCardId && (
@@ -437,10 +472,50 @@ export default function GameBoard() {
             )}
 
             {/* FABs */}
-            <Box sx={{ position: 'fixed', bottom: 180, right: 24, zIndex: 60 }}>
-                <Tooltip title="Inventario"><IconButton onClick={() => setIsInventoryOpen(true)} size="large" sx={{ bgcolor: 'background.paper' }}><Wallet color="secondary" /></IconButton></Tooltip>
+            <Box sx={{ position: 'fixed', bottom: logHeight + 20, right: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
+                <Stack direction="column" spacing={2}>
+                    <Tooltip title="Comercio" placement="left">
+                        <Box sx={{
+                            width: 56,
+                            height: 56,
+                            bgcolor: '#334155',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: 6,
+                            cursor: 'pointer',
+                            transition: 'transfrom 0.2s',
+                            '&:hover': { transform: 'scale(1.1)' }
+                        }}
+                            onClick={() => setIsTradeOpen(true)}
+                        >
+                            <Handshake color="warning" />
+                        </Box>
+                    </Tooltip>
+
+                    <Tooltip title="Inventario" placement="left">
+                        <Box sx={{
+                            width: 56,
+                            height: 56,
+                            bgcolor: '#334155',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: 6,
+                            cursor: 'pointer',
+                            transition: 'transfrom 0.2s',
+                            '&:hover': { transform: 'scale(1.1)' }
+                        }}
+                            onClick={() => setIsInventoryOpen(true)}
+                        >
+                            <Wallet color="secondary" />
+                        </Box>
+                    </Tooltip>
+                </Stack>
             </Box>
-        </Box>
+        </Box >
     );
 }
 

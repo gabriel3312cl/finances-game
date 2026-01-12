@@ -5,6 +5,7 @@ interface PlayerTokenProps {
     color: string;
     name: string;
     isCurrentTurn: boolean;
+    size?: number | string;
 }
 
 const colorMap: Record<string, string> = {
@@ -18,7 +19,7 @@ const colorMap: Record<string, string> = {
     'PINK': '#ec4899',
 };
 
-export default function PlayerToken({ color, name, isCurrentTurn }: PlayerTokenProps) {
+export default function PlayerToken({ color, name, isCurrentTurn, size = 24 }: PlayerTokenProps) {
     const bgColor = colorMap[color] || '#a855f7';
 
     return (
@@ -30,19 +31,27 @@ export default function PlayerToken({ color, name, isCurrentTurn }: PlayerTokenP
                     zIndex: isCurrentTurn ? 50 : 20,
                     transform: isCurrentTurn ? 'scale(1.2)' : 'scale(1)',
                     '&:hover': { zIndex: 60, transform: 'scale(1.1)' },
+                    width: size,
+                    height: size,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                 }}
             >
                 <Avatar
                     sx={{
-                        width: 24,
-                        height: 24,
+                        width: '100%',
+                        height: '100%',
                         bgcolor: bgColor,
                         border: 2,
                         borderColor: 'common.white',
-                        fontSize: '0.6rem',
+                        fontSize: typeof size === 'number' ? size * 0.4 : '0.8rem',
                         fontWeight: 'bold',
                         boxShadow: `0 0 10px ${bgColor}CC`,
                         animation: isCurrentTurn ? 'pulse 1.5s infinite' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         '@keyframes pulse': {
                             '0%': { boxShadow: `0 0 0 0 ${bgColor}99` },
                             '70%': { boxShadow: `0 0 0 6px ${bgColor}00` },

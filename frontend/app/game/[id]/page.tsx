@@ -6,7 +6,10 @@ import { useGameSocket } from '@/hooks/useGameSocket';
 import { useGameStore } from '@/store/gameStore';
 import GameBoard from '@/components/game/GameBoard';
 import { Box, AppBar, Toolbar, Typography, Chip, Paper } from '@mui/material';
-import { AttachMoney } from '@mui/icons-material';
+import { AttachMoney, ExitToApp } from '@mui/icons-material';
+import PlayerToken from '@/components/game/PlayerToken';
+import Link from 'next/link';
+import { IconButton, Tooltip } from '@mui/material';
 
 interface GamePageProps {
     params: Promise<{ id: string }>
@@ -43,6 +46,13 @@ function GameWrapper({ gameId }: { gameId: string }) {
             }}>
                 <Toolbar variant="dense" sx={{ justifyContent: 'space-between', height: 60 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Link href="/">
+                            <Tooltip title="Volver al Menú Principal">
+                                <IconButton sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}>
+                                    <ExitToApp />
+                                </IconButton>
+                            </Tooltip>
+                        </Link>
                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                             <Typography variant="h6" fontWeight="900" sx={{
                                 background: 'linear-gradient(45deg, #FFD700, #FFA500)',
@@ -57,6 +67,8 @@ function GameWrapper({ gameId }: { gameId: string }) {
                     </Box>
 
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+
+
                         {/* Status Widget */}
                         {gameState && (
                             <Box sx={{
@@ -104,6 +116,20 @@ function GameWrapper({ gameId }: { gameId: string }) {
                                     </Typography>
                                 </Box>
                             </Paper>
+                        )}
+
+                        {/* AVATAR */}
+                        {myPlayer && (
+                            <Box sx={{
+                                width: 42, height: 42,
+                                borderRadius: '50%',
+                                border: '2px solid rgba(255,255,255,0.1)',
+                                overflow: 'hidden',
+                                boxShadow: 4,
+                                bgcolor: 'rgba(0,0,0,0.2)'
+                            }}>
+                                <PlayerToken color={myPlayer.token_color} name={myPlayer.name} isCurrentTurn={false} size="100%" />
+                            </Box>
                         )}
                     </Box>
                 </Toolbar>

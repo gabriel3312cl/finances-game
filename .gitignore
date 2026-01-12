@@ -4,6 +4,8 @@
 .vscode/
 .idea/
 
+*.txt
+
 # Backend (Go)
 /backend/bin/
 /backend/dist/

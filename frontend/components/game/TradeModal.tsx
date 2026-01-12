@@ -13,10 +13,16 @@ interface TradeModalProps {
     gameState: any;
     user: any;
     sendMessage: (action: string, payload: any) => void;
+    isOpen?: boolean;
+    onClose?: () => void;
 }
 
-export default function TradeModal({ gameState, user, sendMessage }: TradeModalProps) {
-    const [isOpen, setIsOpen] = useState(false);
+export default function TradeModal({ gameState, user, sendMessage, isOpen = false, onClose }: TradeModalProps) {
+    const [localIsOpen, setLocalIsOpen] = useState(false);
+
+    // Use external props if provided, otherwise internal state (keep backward compat if needed, but we will move to external)
+    const effectiveIsOpen = onClose ? isOpen : localIsOpen;
+    const handleClose = onClose ? onClose : () => setLocalIsOpen(false);
     const [targetId, setTargetId] = useState('');
     const [offerProperties, setOfferProperties] = useState<string[]>([]);
     const [requestProperties, setRequestProperties] = useState<string[]>([]);
@@ -55,7 +61,7 @@ export default function TradeModal({ gameState, user, sendMessage }: TradeModalP
             request_properties: requestProperties,
             request_cash: parseInt(requestCash) || 0
         });
-        setIsOpen(false);
+        handleClose();
     };
 
     const handleAccept = () => sendMessage('ACCEPT_TRADE', {});
@@ -116,127 +122,120 @@ export default function TradeModal({ gameState, user, sendMessage }: TradeModalP
     }
 
     // --- CREATE TRADE DIALOG ---
+    // FAB moved to parent (GameBoard)
     return (
-        <>
-            <Box sx={{ position: 'fixed', bottom: 96, right: 24, zIndex: 60 }}>
-                <Fab color="warning" onClick={() => setIsOpen(true)}>
-                    <Handshake />
-                </Fab>
-            </Box>
+        <Dialog open={effectiveIsOpen} onClose={handleClose} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Proponer Intercambio
+                <IconButton onClick={handleClose}><Close /></IconButton>
+            </DialogTitle>
+            <DialogContent dividers>
+                <Box sx={{ mb: 3 }}>
+                    <FormControl fullWidth>
+                        <InputLabel>Negociar con...</InputLabel>
+                        <Select
+                            value={targetId}
+                            label="Negociar con..."
+                            onChange={(e) => setTargetId(e.target.value)}
+                        >
+                            <MenuItem value=""><em>Seleccionar Jugador</em></MenuItem>
+                            {otherPlayers.map((p: any) => (
+                                <MenuItem key={p.user_id} value={p.user_id}>{p.name}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
 
-            <Dialog open={isOpen} onClose={() => setIsOpen(false)} maxWidth="md" fullWidth>
-                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    Proponer Intercambio
-                    <IconButton onClick={() => setIsOpen(false)}><Close /></IconButton>
-                </DialogTitle>
-                <DialogContent dividers>
-                    <Box sx={{ mb: 3 }}>
-                        <FormControl fullWidth>
-                            <InputLabel>Negociar con...</InputLabel>
-                            <Select
-                                value={targetId}
-                                label="Negociar con..."
-                                onChange={(e) => setTargetId(e.target.value)}
-                            >
-                                <MenuItem value=""><em>Seleccionar Jugador</em></MenuItem>
-                                {otherPlayers.map((p: any) => (
-                                    <MenuItem key={p.user_id} value={p.user_id}>{p.name}</MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Box>
-
-                    {targetId && (
-                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-                            {/* Offer Column */}
-                            <Box sx={{ flex: 1 }}>
-                                <Typography variant="h6" color="success.main" gutterBottom>Tu Oferta</Typography>
-                                <TextField
-                                    fullWidth
-                                    label="Efectivo"
-                                    type="number"
-                                    value={offerCash}
-                                    onChange={(e) => setOfferCash(e.target.value)}
-                                    size="small"
-                                    sx={{ mb: 2 }}
-                                />
-                                <Typography variant="subtitle2" gutterBottom>Propiedades</Typography>
-                                <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', p: 1 }}>
-                                    {myProperties.length === 0 ? <Typography variant="caption" color="text.secondary">No tienes propiedades</Typography> : (
-                                        myProperties.map((tile: any) => (
-                                            <FormControlLabel
-                                                key={tile.id}
-                                                control={
-                                                    <Checkbox
-                                                        checked={offerProperties.includes(tile.property_id)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) setOfferProperties([...offerProperties, tile.property_id]);
-                                                            else setOfferProperties(offerProperties.filter(id => id !== tile.property_id));
-                                                        }}
-                                                    />
-                                                }
-                                                label={<Typography variant="body2">{tile.name}</Typography>}
-                                            />
-                                        ))
-                                    )}
-                                </Paper>
-                            </Box>
-
-                            {/* Request Column */}
-                            <Box sx={{ flex: 1 }}>
-                                <Typography variant="h6" color="error.main" gutterBottom>Tu Demanda</Typography>
-                                <TextField
-                                    fullWidth
-                                    label="Efectivo"
-                                    type="number"
-                                    value={requestCash}
-                                    onChange={(e) => setRequestCash(e.target.value)}
-                                    size="small"
-                                    sx={{ mb: 2 }}
-                                />
-                                <Typography variant="subtitle2" gutterBottom>Propiedades</Typography>
-                                <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', p: 1 }}>
-                                    {(() => {
-                                        const targetProps = board.filter((t: any) =>
-                                            t.property_id &&
-                                            gameState.property_ownership?.[t.property_id] === targetId &&
-                                            (t.type === 'PROPERTY' || t.type === 'UTILITY' || t.type === 'RAILROAD')
-                                        );
-
-                                        if (targetProps.length === 0) return <Typography variant="caption" color="text.secondary">No tiene propiedades</Typography>;
-                                        return targetProps.map((tile: any) => (
-                                            <FormControlLabel
-                                                key={tile.id}
-                                                control={
-                                                    <Checkbox
-                                                        checked={requestProperties.includes(tile.property_id)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) setRequestProperties([...requestProperties, tile.property_id]);
-                                                            else setRequestProperties(requestProperties.filter(id => id !== tile.property_id));
-                                                        }}
-                                                    />
-                                                }
-                                                label={<Typography variant="body2">{tile.name}</Typography>}
-                                            />
-                                        ));
-                                    })()}
-                                </Paper>
-                            </Box>
+                {targetId && (
+                    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                        {/* Offer Column */}
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" color="success.main" gutterBottom>Tu Oferta</Typography>
+                            <TextField
+                                fullWidth
+                                label="Efectivo"
+                                type="number"
+                                value={offerCash}
+                                onChange={(e) => setOfferCash(e.target.value)}
+                                size="small"
+                                sx={{ mb: 2 }}
+                            />
+                            <Typography variant="subtitle2" gutterBottom>Propiedades</Typography>
+                            <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', p: 1 }}>
+                                {myProperties.length === 0 ? <Typography variant="caption" color="text.secondary">No tienes propiedades</Typography> : (
+                                    myProperties.map((tile: any) => (
+                                        <FormControlLabel
+                                            key={tile.id}
+                                            control={
+                                                <Checkbox
+                                                    checked={offerProperties.includes(tile.property_id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setOfferProperties([...offerProperties, tile.property_id]);
+                                                        else setOfferProperties(offerProperties.filter(id => id !== tile.property_id));
+                                                    }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2">{tile.name}</Typography>}
+                                        />
+                                    ))
+                                )}
+                            </Paper>
                         </Box>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setIsOpen(false)}>Cancelar</Button>
-                    <Button
-                        onClick={handleSendTrade}
-                        variant="contained"
-                        color="warning"
-                        disabled={!targetId}
-                    >
-                        Enviar Oferta
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </>
+
+                        {/* Request Column */}
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" color="error.main" gutterBottom>Tu Demanda</Typography>
+                            <TextField
+                                fullWidth
+                                label="Efectivo"
+                                type="number"
+                                value={requestCash}
+                                onChange={(e) => setRequestCash(e.target.value)}
+                                size="small"
+                                sx={{ mb: 2 }}
+                            />
+                            <Typography variant="subtitle2" gutterBottom>Propiedades</Typography>
+                            <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', p: 1 }}>
+                                {(() => {
+                                    const targetProps = board.filter((t: any) =>
+                                        t.property_id &&
+                                        gameState.property_ownership?.[t.property_id] === targetId &&
+                                        (t.type === 'PROPERTY' || t.type === 'UTILITY' || t.type === 'RAILROAD')
+                                    );
+
+                                    if (targetProps.length === 0) return <Typography variant="caption" color="text.secondary">No tiene propiedades</Typography>;
+                                    return targetProps.map((tile: any) => (
+                                        <FormControlLabel
+                                            key={tile.id}
+                                            control={
+                                                <Checkbox
+                                                    checked={requestProperties.includes(tile.property_id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setRequestProperties([...requestProperties, tile.property_id]);
+                                                        else setRequestProperties(requestProperties.filter(id => id !== tile.property_id));
+                                                    }}
+                                                />
+                                            }
+                                            label={<Typography variant="body2">{tile.name}</Typography>}
+                                        />
+                                    ));
+                                })()}
+                            </Paper>
+                        </Box>
+                    </Box>
+                )}
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={handleClose}>Cancelar</Button>
+                <Button
+                    onClick={handleSendTrade}
+                    variant="contained"
+                    color="warning"
+                    disabled={!targetId}
+                >
+                    Enviar Oferta
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 }
