@@ -7,15 +7,30 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. SCHEMAS ===============================================================
 
+-- Valid Registration Codes (MOVED TO TOP for FK dependency)
+CREATE TABLE IF NOT EXISTS valid_codes (
+    code VARCHAR(20) PRIMARY KEY,
+    description VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Users
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    special_code VARCHAR(20) REFERENCES valid_codes(code), -- RESTORED
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     balance INT DEFAULT 0,
     is_admin BOOLEAN DEFAULT FALSE
 );
+-- Migration: Add special_code if missing (for existing DBs)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS special_code VARCHAR(20) REFERENCES valid_codes(code);
+-- Migration: Add updated_at if missing
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
 
 -- Game Rooms
 CREATE TABLE IF NOT EXISTS game_rooms (
@@ -41,14 +56,6 @@ CREATE TABLE IF NOT EXISTS players (
     in_jail BOOLEAN DEFAULT FALSE,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, game_id)
-);
-
--- Valid Registration Codes
-CREATE TABLE IF NOT EXISTS valid_codes (
-    code VARCHAR(20) PRIMARY KEY,
-    description VARCHAR(255),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Game Cards (Chance / Community Chest)
@@ -180,10 +187,10 @@ CREATE TABLE IF NOT EXISTS auctions (
 -- 2. SEED DATA =============================================================
 
 -- Clear existing seed data to prevent duplicates (since we re-insert)
-TRUNCATE valid_codes;
--- Only truncate game_cards if we want to reset them to default (recommended here)
+TRUNCATE valid_codes CASCADE;
+-- Use CASCADE on valid_codes because users.special_code might reference it
+-- Only truncate game_cards if we want to reset them to default
 TRUNCATE game_cards;
--- Clear properties to update rules/prices
 TRUNCATE board_layout;
 TRUNCATE properties CASCADE;
 
@@ -200,7 +207,7 @@ INSERT INTO game_cards (type, title, description, effect) VALUES
 ('CHANCE', 'Avanza Transporte', 'Avanza al Transporte más cercano (Si tiene dueño paga doble)', 'move:nearest_railroad'),
 ('CHANCE', 'Pase Gratis', 'Sal de la cárcel gratis', 'jail_free'),
 ('CHANCE', 'Avanza Servicio', 'Avanza al Servicio más cercano (Si tiene dueño tira dados y paga 10x)', 'move:nearest_utility'),
-('CHANCE', 'Prestamo', 'Por cumplimiento de préstamo, cobra 150m', 'collect:150'),
+('CHANCE', 'Prestamo', 'Por cumplimiento de préstamo, cobra 150m)', 'collect:150'),
 ('CHANCE', 'Salida', 'Avanza hasta la Salida (Cobra 500m)', 'move:GO_BONUS'),
 ('CHANCE', 'Presidente', 'Elegido Presidente del Consejo. Paga 50m a cada jugador', 'pay_all:50'),
 ('CHANCE', 'Dividendos', 'El banco te paga un dividendo de 50m', 'collect:50'),
