@@ -62,14 +62,14 @@ func main() {
 	// Auth Routes
 	mux.HandleFunc("/register", authHandler.Register)
 	mux.HandleFunc("/login", authHandler.Login)
-	mux.HandleFunc("/me", handler.AuthMiddleware(authHandler.Me))
-	mux.HandleFunc("/delete-account", handler.AuthMiddleware(authHandler.Delete))
+	mux.HandleFunc("/me", handler.AuthMiddleware(userRepo, authHandler.Me))
+	mux.HandleFunc("/delete-account", handler.AuthMiddleware(userRepo, authHandler.Delete))
 
 	// Game Routes
 	gameHandler := handler.NewGameHandler(gameService)
-	mux.HandleFunc("/games/create", handler.AuthMiddleware(gameHandler.CreateGame))
-	mux.HandleFunc("/games/join", handler.AuthMiddleware(gameHandler.JoinGame))
-	mux.HandleFunc("/games/my", handler.AuthMiddleware(gameHandler.GetMyGames))
+	mux.HandleFunc("/games/create", handler.AuthMiddleware(userRepo, gameHandler.CreateGame))
+	mux.HandleFunc("/games/join", handler.AuthMiddleware(userRepo, gameHandler.JoinGame))
+	mux.HandleFunc("/games/my", handler.AuthMiddleware(userRepo, gameHandler.GetMyGames))
 	mux.HandleFunc("/games/board", gameHandler.GetBoard) // public, or auth? Game board is generic. Public is fine.
 
 	// WebSocket Route

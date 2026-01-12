@@ -13,11 +13,12 @@ import (
 	"time"
 
 	"github.com/gabriel3312cl/finances-game/backend/internal/domain"
+	"github.com/gabriel3312cl/finances-game/backend/internal/repository/postgres"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Middleware to validate JWT
-func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+// Middleware to validate JWT and ensure user exists in DB
+func AuthMiddleware(repo *postgres.UserRepository, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -43,6 +44,14 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if claims, ok := token.Claims.(*domain.AuthClaims); ok && token.Valid {
+			// CRITICAL: Check if user still exists in DB (handles stale tokens after DB reset)
+			_, err := repo.GetByID(claims.UserID)
+			if err != nil {
+				log.Printf("Auth failed: User %s (%s) not found in DB. Stale token suspected.", claims.Username, claims.UserID)
+				http.Error(w, "User no longer exists. Please log in again.", http.StatusUnauthorized)
+				return
+			}
+
 			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
 			ctx = context.WithValue(ctx, "username", claims.Username)
 			next(w, r.WithContext(ctx))

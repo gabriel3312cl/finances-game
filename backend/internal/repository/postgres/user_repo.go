@@ -33,6 +33,19 @@ func (r *UserRepository) GetByUsername(username string) (*domain.User, error) {
 	return u, nil
 }
 
+func (r *UserRepository) GetByID(id string) (*domain.User, error) {
+	u := &domain.User{}
+	query := `SELECT id, username, created_at FROM users WHERE id = $1`
+	err := r.db.QueryRow(query, id).Scan(&u.ID, &u.Username, &u.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
 func (r *UserRepository) ValidateSpecialCode(code string) (bool, error) {
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM valid_codes WHERE code = $1 AND is_active = TRUE)`
