@@ -19,6 +19,13 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
     const [timeLeft, setTimeLeft] = useState<number>(0);
     const [customBid, setCustomBid] = useState<string>('');
 
+    // Reset Custom Bid when auction ends or changes
+    useEffect(() => {
+        if (!gameState?.active_auction?.is_active) {
+            setCustomBid('');
+        }
+    }, [gameState?.active_auction?.is_active]);
+
     // Find Property Name from Board (Moved up to obey Hook Rules)
     const propertyName = React.useMemo(() => {
         if (!auction || !gameState?.board) return auction?.property_id;

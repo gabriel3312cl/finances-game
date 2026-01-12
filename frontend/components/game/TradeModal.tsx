@@ -29,6 +29,17 @@ export default function TradeModal({ gameState, user, sendMessage, isOpen = fals
     const [offerCash, setOfferCash] = useState('');
     const [requestCash, setRequestCash] = useState('');
 
+    // Reset state when closed
+    React.useEffect(() => {
+        if (!effectiveIsOpen) {
+            setTargetId('');
+            setOfferProperties([]);
+            setRequestProperties([]);
+            setOfferCash('');
+            setRequestCash('');
+        }
+    }, [effectiveIsOpen]);
+
     if (!user || !gameState) return null;
 
     const activeTrade = gameState?.active_trade;
@@ -42,7 +53,13 @@ export default function TradeModal({ gameState, user, sendMessage, isOpen = fals
         t.property_id &&
         gameState?.property_ownership?.[t.property_id] === user.user_id &&
         (t.type === 'PROPERTY' || t.type === 'UTILITY' || t.type === 'RAILROAD')
-    );
+    ).sort((a: any, b: any) => {
+        // Sort by Group (Color) then by ID
+        if (a.group_identifier !== b.group_identifier) {
+            return (a.group_identifier || '').localeCompare(b.group_identifier || '');
+        }
+        return a.id - b.id;
+    });
 
     const otherPlayers = gameState.players?.filter((p: any) => p.user_id !== user.user_id) || [];
 
@@ -175,7 +192,14 @@ export default function TradeModal({ gameState, user, sendMessage, isOpen = fals
                                                     }}
                                                 />
                                             }
-                                            label={<Typography variant="body2">{tile.name}</Typography>}
+                                            label={
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    {tile.group_color && (
+                                                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: tile.group_color, border: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
+                                                    )}
+                                                    <Typography variant="body2">{tile.name}</Typography>
+                                                </Box>
+                                            }
                                         />
                                     ))
                                 )}
@@ -201,7 +225,12 @@ export default function TradeModal({ gameState, user, sendMessage, isOpen = fals
                                         t.property_id &&
                                         gameState.property_ownership?.[t.property_id] === targetId &&
                                         (t.type === 'PROPERTY' || t.type === 'UTILITY' || t.type === 'RAILROAD')
-                                    );
+                                    ).sort((a: any, b: any) => {
+                                        if (a.group_identifier !== b.group_identifier) {
+                                            return (a.group_identifier || '').localeCompare(b.group_identifier || '');
+                                        }
+                                        return a.id - b.id;
+                                    });
 
                                     if (targetProps.length === 0) return <Typography variant="caption" color="text.secondary">No tiene propiedades</Typography>;
                                     return targetProps.map((tile: any) => (
@@ -216,7 +245,14 @@ export default function TradeModal({ gameState, user, sendMessage, isOpen = fals
                                                     }}
                                                 />
                                             }
-                                            label={<Typography variant="body2">{tile.name}</Typography>}
+                                            label={
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    {tile.group_color && (
+                                                        <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: tile.group_color, border: 1, borderColor: 'rgba(255,255,255,0.3)' }} />
+                                                    )}
+                                                    <Typography variant="body2">{tile.name}</Typography>
+                                                </Box>
+                                            }
                                         />
                                     ));
                                 })()}

@@ -22,6 +22,14 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
     const [activeTab, setActiveTab] = useState(0);
     const [loanAmount, setLoanAmount] = useState('');
 
+    // Reset state on close
+    React.useEffect(() => {
+        if (!isOpen) {
+            setActiveTab(0);
+            setLoanAmount('');
+        }
+    }, [isOpen]);
+
     if (!user || !gameState) return null;
 
     // Determine whose inventory to show
