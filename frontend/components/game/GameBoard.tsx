@@ -133,22 +133,17 @@ export default function GameBoard() {
     // Right Lane: 48 -> 0 (Bottom Right).
     const [currentLane, setCurrentLane] = useState(0);
 
-    // Auto-focus on my turn or load
+    // Auto-focus on my position (follows player movement after dice roll)
+    const myPosition = gameState?.players?.find((p: any) => p.user_id === user?.user_id)?.position;
+
     useEffect(() => {
-        if (user && gameState?.players) {
-            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
-            if (me) {
-                // Determine lane based on position
-                // 0-16: Lane 0
-                // 16-32: Lane 1
-                // 32-48: Lane 2
-                // 48-64: Lane 3
-                const lane = Math.floor(me.position / 16);
-                setCurrentLane(Math.min(lane, 3));
-            }
+        if (myPosition !== undefined) {
+            // Determine lane based on position
+            // 0-15: Lane 0, 16-31: Lane 1, 32-47: Lane 2, 48-63: Lane 3
+            const lane = Math.floor(myPosition / 16);
+            setCurrentLane(Math.min(lane, 3));
         }
-    }, [gameState?.current_turn_id, user?.user_id]); // Re-focus on turn change? Or just init?
-    // User requested: "Boton donde poder centrar". So maybe default is auto, but allow manual.
+    }, [myPosition]); // Re-focus whenever my position changes
 
     const focusMyLane = () => {
         if (!gameState || !gameState.players) return;
@@ -212,8 +207,9 @@ export default function GameBoard() {
                             const indices = [];
                             for (let i = start; i <= end; i++) indices.push(i % 64);
 
-                            // Reverse for lanes 0 (bottom) and 3 (right) to match MiniMap orientation
-                            const tilesToRender = (currentLane === 0 || currentLane === 3) ? indices.reverse() : indices;
+                            // Reverse for lanes 0 (bottom) and 1 (left) to match board orientation
+                            // Lane 2 (top) and 3 (right) are not reversed
+                            const tilesToRender = (currentLane === 0 || currentLane === 1) ? indices.reverse() : indices;
 
                             return tilesToRender.map(i => {
                                 const tile = boardTiles.find(t => t.id === i);
