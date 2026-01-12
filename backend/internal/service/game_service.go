@@ -1260,8 +1260,24 @@ func (s *GameService) initializeBoard() []domain.Tile {
 				tile.GroupColor = prop.GroupColor
 			} else {
 				// It's a special tile type string
-				tile.Type = id
-				tile.Name = id // e.g. "GO", "CHANCE"
+				// Override Corners based on Index for consistency
+				switch i {
+				case 0:
+					tile.Type = "GO"
+					tile.Name = "SALIDA"
+				case 16:
+					tile.Type = "JAIL"
+					tile.Name = "CÁRCEL"
+				case 32:
+					tile.Type = "FREE_PARKING"
+					tile.Name = "PARADA LIBRE" // Paso Libre
+				case 48:
+					tile.Type = "GO_TO_JAIL"
+					tile.Name = "VAYA A LA CÁRCEL"
+				default:
+					tile.Type = id
+					tile.Name = id
+				}
 			}
 		} else {
 			tile.Name = "Unknown"

@@ -8,9 +8,12 @@ interface BoardTileProps {
     index: number;
     onClick?: () => void;
     fontScale?: number;
+    players?: any[];
+    forceTopBar?: boolean;
 }
+import PlayerToken from './PlayerToken';
 
-export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerColor }: BoardTileProps & { ownerColor?: string }) {
+export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerColor, players, forceTopBar }: BoardTileProps & { ownerColor?: string }) {
     const { row, col } = getGridPosition(index);
     const isCorner = tile.type === 'CORNER' || tile.type === 'JAIL_VISIT' || tile.type === 'FREE_PARKING' || tile.type === 'GO_TO_JAIL';
     // Base background color
@@ -31,6 +34,7 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
     const getBarStyle = () => {
         if (!tile.color) return {};
         const borderStyle = `8px solid ${tile.color}`;
+        if (forceTopBar) return { borderTop: borderStyle };
         if (row === 17) return { borderTop: borderStyle };
         if (col === 1) return { borderRight: borderStyle };
         if (row === 1) return { borderBottom: borderStyle };
@@ -90,6 +94,17 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
             {tile.type === 'UTILITY' && <WatermarkIcon icon={<Lightbulb fontSize="large" />} />}
             {tile.type === 'CHANCE' && <WatermarkIcon icon={<HelpOutline fontSize="large" />} />}
             {tile.type === 'COMMUNITY' && <WatermarkIcon icon={<Inventory2 fontSize="large" />} />}
+
+            {/* Players on Tile */}
+            {players && players.length > 0 && (
+                <Box sx={{ position: 'absolute', bottom: 2, right: 2, display: 'flex', gap: 0.5, zIndex: 5, flexWrap: 'wrap-reverse', justifyContent: 'flex-end' }}>
+                    {players.map(p => (
+                        <Box key={p.user_id} sx={{ transform: 'scale(0.8)' }}>
+                            <PlayerToken color={p.token_color} name={p.name} isCurrentTurn={false} />
+                        </Box>
+                    ))}
+                </Box>
+            )}
         </Box>
     );
 }
