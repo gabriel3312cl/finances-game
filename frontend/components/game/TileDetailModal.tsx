@@ -3,6 +3,7 @@ import React from 'react';
 import { TileData } from '@/config/boardData';
 import { Dialog, DialogTitle, DialogContent, Typography, Box, Chip, Divider, Grid, Button } from '@mui/material';
 import { House, MonetizationOn, VpnKey } from '@mui/icons-material';
+import { getContrastColor } from '@/theme';
 
 interface TileDetailModalProps {
     tile: TileData | null;
@@ -39,7 +40,7 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
                 {tile.type === 'PROPERTY' && (
                     <Box sx={{
                         bgcolor: tile.color || 'grey.800',
-                        color: 'white',
+                        color: getContrastColor(tile.color || '#333'), // Dynamic Text Color
                         textAlign: 'center',
                         border: '2px solid black',
                         mb: 2,
