@@ -133,11 +133,17 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
     );
 }
 
-function RentRow({ label, value }: { label: string, value?: number }) {
+function RentRow({ label, value, valueText, isActive = false }: { label: string, value?: number, valueText?: string, isActive?: boolean }) {
     return (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="body2" sx={{ color: 'black' }}>{label}</Typography>
-            <Typography variant="body2" sx={{ color: 'black' }}>${value}</Typography>
+        <Box sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            bgcolor: isActive ? 'rgba(57, 255, 20, 0.2)' : 'transparent',
+            borderRadius: 1,
+            px: 0.5
+        }}>
+            <Typography variant="body2" sx={{ color: 'black', fontWeight: isActive ? 'bold' : 'normal' }}>{label}</Typography>
+            <Typography variant="body2" sx={{ color: 'black', fontWeight: isActive ? 'bold' : 'normal' }}>{valueText || (value ? `$${value}` : '-')}</Typography>
         </Box>
     );
 }
