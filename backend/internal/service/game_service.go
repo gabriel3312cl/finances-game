@@ -387,7 +387,16 @@ func (s *GameService) handleFinalizeAuction(game *domain.GameState) {
 		return
 	}
 	// Check if time is actually up
-	if time.Now().After(game.ActiveAuction.EndTime) {
+	now := time.Now()
+	lastBid := time.Unix(game.ActiveAuction.LastBidTime, 0)
+
+	// Auto-Win: If > 5s passed since last bid and we have a bidder
+	if game.ActiveAuction.BidderID != "" && now.Sub(lastBid) > 5*time.Second {
+		s.endAuction(game)
+		return
+	}
+
+	if now.After(game.ActiveAuction.EndTime) {
 		s.endAuction(game)
 	}
 }
@@ -406,12 +415,13 @@ func (s *GameService) handleStartAuction(game *domain.GameState, userID string, 
 	// Validation: Verify property is not owned (omitted for speed, trusting frontend/rules for now)
 
 	game.ActiveAuction = &domain.AuctionState{
-		PropertyID: req.PropertyID,
-		HighestBid: 10, // Starting bid?
-		BidderID:   "",
-		BidderName: "No bids",
-		EndTime:    time.Now().Add(30 * time.Second), // 30s auction
-		IsActive:   true,
+		PropertyID:  req.PropertyID,
+		HighestBid:  10, // Starting bid?
+		BidderID:    "",
+		BidderName:  "No bids",
+		EndTime:     time.Now().Add(30 * time.Second), // 30s auction
+		LastBidTime: time.Now().Unix(),
+		IsActive:    true,
 	}
 	game.LastAction = "Subasta iniciada por " + req.PropertyID
 	s.addLog(game, "Subasta iniciada por "+req.PropertyID, "INFO")
@@ -457,6 +467,7 @@ func (s *GameService) handleBid(game *domain.GameState, userID string, payload j
 	game.ActiveAuction.HighestBid = req.Amount
 	game.ActiveAuction.BidderID = userID
 	game.ActiveAuction.BidderName = bidderName
+	game.ActiveAuction.LastBidTime = time.Now().Unix()
 
 	// Anti-sniping: extend if < 10s left
 	timeLeft := time.Until(game.ActiveAuction.EndTime)

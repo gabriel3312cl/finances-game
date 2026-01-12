@@ -31,12 +31,24 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
         if (!auction || !auction.is_active) return;
 
         const interval = setInterval(() => {
-            const end = new Date(auction.end_time).getTime();
             const now = new Date().getTime();
-            const diff = Math.max(0, Math.floor((end - now) / 1000));
-            setTimeLeft(diff);
 
-            if (diff <= 0) {
+            // 1. Main Timer (30s / Anti-snipe)
+            const end = new Date(auction.end_time).getTime();
+            const mainDiff = Math.max(0, Math.floor((end - now) / 1000));
+
+            // 2. Sudden Death Timer (5s from Last Bid)
+            // If there is a bidder, we check the 5s rule.
+            let suddenDeathDiff = 999;
+            if (auction.bidder_id && auction.last_bid_time) {
+                const lastBidTime = auction.last_bid_time * 1000;
+                suddenDeathDiff = Math.max(0, 5 - Math.floor((now - lastBidTime) / 1000));
+            }
+
+            // Effective Time is the minimum, but we only auto-end if one hits 0
+            setTimeLeft(Math.min(mainDiff, suddenDeathDiff));
+
+            if (mainDiff <= 0 || (auction.bidder_id && suddenDeathDiff <= 0)) {
                 // Trigger backend finalization
                 sendMessage('FINALIZE_AUCTION', {});
             }
@@ -94,13 +106,21 @@ export default function AuctionModal({ gameState, user, sendMessage }: AuctionMo
 
                 {/* Timer */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-                    <Typography variant="h2" fontFamily="monospace" fontWeight="bold" color={timeLeft < 10 ? 'error.main' : 'common.white'} sx={{ lineHeight: 1 }}>
-                        00:{timeLeft.toString().padStart(2, '0')}
+                    <Typography variant="h2" fontFamily="monospace" fontWeight="bold" color={timeLeft < 3 ? 'error.main' : 'common.white'} sx={{ lineHeight: 1 }}>
+                        {timeLeft <= 5 && auction.bidder_id ? `¡${timeLeft}!` : `00:${timeLeft.toString().padStart(2, '0')}`}
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'grey.500', mt: 1 }}>
                         <AccessTime fontSize="small" />
-                        <Typography variant="caption">TIEMPO RESTANTE</Typography>
+                        <Typography variant="caption">{timeLeft <= 5 && auction.bidder_id ? 'SE CIERRA EN...' : 'TIEMPO RESTANTE'}</Typography>
                     </Box>
+                    {/* Visual Progress for 5s rule */}
+                    {timeLeft <= 5 && auction.bidder_id && (
+                        <LinearProgress
+                            variant="determinate"
+                            value={(timeLeft / 5) * 100}
+                            sx={{ width: '80%', mt: 1, height: 4, borderRadius: 2, bgcolor: 'grey.800', '& .MuiLinearProgress-bar': { bgcolor: 'error.main' } }}
+                        />
+                    )}
                 </Box>
 
                 {/* Status Card */}
