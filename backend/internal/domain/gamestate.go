@@ -70,6 +70,17 @@ type Tile struct {
 	OwnerID         *string `json:"owner_id,omitempty"`
 	Price           int     `json:"price,omitempty"`
 	Rent            int     `json:"rent,omitempty"`
+	RentBase        int     `json:"rent_base,omitempty"`
+	RentColorGroup  int     `json:"rent_color_group,omitempty"`
+	Rent1House      int     `json:"rent_1_house,omitempty"`
+	Rent2House      int     `json:"rent_2_house,omitempty"`
+	Rent3House      int     `json:"rent_3_house,omitempty"`
+	Rent4House      int     `json:"rent_4_house,omitempty"`
+	RentHotel       int     `json:"rent_hotel,omitempty"`
+	HouseCost       int     `json:"house_cost,omitempty"`
+	HotelCost       int     `json:"hotel_cost,omitempty"`
+	MortgageValue   int     `json:"mortgage_value,omitempty"`
+	UnmortgageValue int     `json:"unmortgage_value,omitempty"`
 	GroupIdentifier string  `json:"group_identifier,omitempty"` // Color or Group ID
 	GroupName       string  `json:"group_name,omitempty"`
 	GroupColor      string  `json:"group_color,omitempty"`

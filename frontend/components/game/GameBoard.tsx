@@ -9,6 +9,7 @@ import PlayerToken from './PlayerToken';
 import CardModal from './CardModal';
 import InventoryDrawer from './InventoryDrawer';
 import TradeModal from './TradeModal';
+import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut } from '@mui/icons-material';
@@ -57,7 +58,18 @@ export default function GameBoard() {
         buildingCount: t.building_count,
         // Map Color
         color: t.group_color,
-        groupName: t.group_name
+        groupName: t.group_name,
+        // Extended
+        rent_base: t.rent_base,
+        rent_color_group: t.rent_color_group,
+        rent_1_house: t.rent_1_house,
+        rent_2_house: t.rent_2_house,
+        rent_3_house: t.rent_3_house,
+        rent_4_house: t.rent_4_house,
+        rent_hotel: t.rent_hotel,
+        house_cost: t.house_cost,
+        hotel_cost: t.hotel_cost,
+        mortgage_value: t.mortgage_value
     }));
 
     // Local UI State

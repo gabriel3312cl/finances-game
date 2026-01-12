@@ -137,7 +137,12 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 
 func (s *GameService) loadPropertiesAndLayout() {
 	// 1. Load Properties
-	rows, err := s.db.Query("SELECT id, name, type, price, rent_base FROM properties")
+	// 1. Load Properties
+	rows, err := s.db.Query(`SELECT 
+		id, name, type, group_id, group_name, group_color, price, 
+		rent_base, rent_color_group, rent_1_house, rent_2_house, rent_3_house, rent_4_house, rent_hotel,
+		house_cost, hotel_cost, mortgage_value, unmortgage_value
+		FROM properties`)
 	if err != nil {
 		log.Printf("Error loading properties: %v", err)
 		return
@@ -147,9 +152,62 @@ func (s *GameService) loadPropertiesAndLayout() {
 	count := 0
 	for rows.Next() {
 		var p domain.Property
-		if err := rows.Scan(&p.ID, &p.Name, &p.Type, &p.Price, &p.RentBase); err != nil {
+		var groupID, groupName, groupColor sql.NullString
+		var rentBase, rentColorGroup, r1, r2, r3, r4, rHotel, hCost, hotCost, mort, unmort sql.NullInt32
+
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.Type, &groupID, &groupName, &groupColor, &p.Price,
+			&rentBase, &rentColorGroup, &r1, &r2, &r3, &r4, &rHotel,
+			&hCost, &hotCost, &mort, &unmort,
+		); err != nil {
+			log.Printf("Error scanning property %s: %v", p.ID, err)
 			continue
 		}
+
+		if groupID.Valid {
+			p.GroupID = groupID.String
+		}
+		if groupName.Valid {
+			p.GroupName = groupName.String
+		}
+		if groupColor.Valid {
+			p.GroupColor = groupColor.String
+		}
+
+		if rentBase.Valid {
+			p.RentBase = int(rentBase.Int32)
+		}
+		if rentColorGroup.Valid {
+			p.RentColorGroup = int(rentColorGroup.Int32)
+		}
+		if r1.Valid {
+			p.Rent1House = int(r1.Int32)
+		}
+		if r2.Valid {
+			p.Rent2House = int(r2.Int32)
+		}
+		if r3.Valid {
+			p.Rent3House = int(r3.Int32)
+		}
+		if r4.Valid {
+			p.Rent4House = int(r4.Int32)
+		}
+		if rHotel.Valid {
+			p.RentHotel = int(rHotel.Int32)
+		}
+		if hCost.Valid {
+			p.HouseCost = int(hCost.Int32)
+		}
+		if hotCost.Valid {
+			p.HotelCost = int(hotCost.Int32)
+		}
+		if mort.Valid {
+			p.MortgageValue = int(mort.Int32)
+		}
+		if unmort.Valid {
+			p.UnmortgageValue = int(unmort.Int32)
+		}
+
 		s.properties[p.ID] = p
 		count++
 	}
@@ -877,27 +935,34 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 			ownerID, isOwned := game.PropertyOwnership[tileID]
 			if isOwned {
 				if ownerID != userID {
-					// PAY RENT
-					rent := prop.RentBase // Base rent for now
-					// Find Owner
-					var owner *domain.PlayerState
-					for _, op := range game.Players {
-						if op.UserID == ownerID {
-							owner = op
-							break
+					// Check Mortgage
+					tile := &game.Board[newPos]
+					if tile.IsMortgaged {
+						desc += ". Propiedad Hipotecada. No paga renta."
+					} else {
+						// Find Owner for payment
+						var owner *domain.PlayerState
+						for _, op := range game.Players {
+							if op.UserID == ownerID {
+								owner = op
+								break
+							}
 						}
-					}
 
-					if owner != nil {
-						// Transfer
-						actualPay := rent
-						if currentPlayer.Balance < rent {
-							actualPay = currentPlayer.Balance // Bankruptcy logic later
+						if owner != nil {
+							rent := s.calculateRent(game, tile, total)
+
+							// Transfer
+							actualPay := rent
+							if currentPlayer.Balance < rent {
+								actualPay = currentPlayer.Balance // Bankruptcy logic later
+							}
+							currentPlayer.Balance -= actualPay
+							owner.Balance += actualPay
+
+							desc += ". Cayó en " + prop.Name + ". Renta: $" + strconv.Itoa(rent)
+							s.addLog(game, currentPlayer.Name+" pagó $"+strconv.Itoa(actualPay)+" de renta a "+owner.Name, "ALERT")
 						}
-						currentPlayer.Balance -= actualPay
-						owner.Balance += actualPay
-						desc += ". Cayó en " + prop.Name + " (Propiedad de " + owner.Name + "). Pagó $" + strconv.Itoa(actualPay)
-						s.addLog(game, currentPlayer.Name+" pagó $"+strconv.Itoa(actualPay)+" de renta a "+owner.Name, "ALERT")
 					}
 				} else {
 					desc += ". Cayó en su propia propiedad."
@@ -1102,7 +1167,21 @@ func (s *GameService) initializeBoard() []domain.Tile {
 				tile.Name = prop.Name
 				tile.Type = prop.Type
 				tile.Price = prop.Price
-				tile.Rent = prop.RentBase // Base rent for config
+				tile.Rent = prop.RentBase // Base rent current
+
+				// Full info
+				tile.RentBase = prop.RentBase
+				tile.RentColorGroup = prop.RentColorGroup
+				tile.Rent1House = prop.Rent1House
+				tile.Rent2House = prop.Rent2House
+				tile.Rent3House = prop.Rent3House
+				tile.Rent4House = prop.Rent4House
+				tile.RentHotel = prop.RentHotel
+				tile.HouseCost = prop.HouseCost
+				tile.HotelCost = prop.HotelCost
+				tile.MortgageValue = prop.MortgageValue
+				tile.UnmortgageValue = prop.UnmortgageValue
+
 				tile.GroupIdentifier = prop.GroupID
 				tile.GroupName = prop.GroupName
 				tile.GroupColor = prop.GroupColor
@@ -1119,6 +1198,86 @@ func (s *GameService) initializeBoard() []domain.Tile {
 		tiles[i] = tile
 	}
 	return tiles
+}
+
+func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, diceRoll int) int {
+	if tile.Type == "UTILITY" {
+		// Count utilities owned
+		ownerID := *tile.OwnerID
+		count := 0
+		for _, t := range game.Board {
+			if t.Type == "UTILITY" && t.OwnerID != nil && *t.OwnerID == ownerID {
+				count++
+			}
+		}
+		if count == 2 {
+			return diceRoll * 10
+		}
+		return diceRoll * 4
+	}
+
+	if tile.Type == "RAILROAD" {
+		ownerID := *tile.OwnerID
+		count := 0
+		for _, t := range game.Board {
+			if t.Type == "RAILROAD" && t.OwnerID != nil && *t.OwnerID == ownerID {
+				count++
+			}
+		}
+		switch count {
+		case 1:
+			return 25
+		case 2:
+			return 50
+		case 3:
+			return 100
+		case 4:
+			return 200
+		default:
+			return 200
+		}
+	}
+
+	// PROPERTY
+	if tile.BuildingCount > 0 {
+		switch tile.BuildingCount {
+		case 1:
+			return tile.Rent1House
+		case 2:
+			return tile.Rent2House
+		case 3:
+			return tile.Rent3House
+		case 4:
+			return tile.Rent4House
+		case 5:
+			return tile.RentHotel
+		}
+	}
+
+	// Base Rent - Check for Monopoly (Full Group)
+	if tile.GroupIdentifier != "" {
+		ownerID := *tile.OwnerID
+		allOwned := true
+		for _, t := range game.Board {
+			if t.GroupIdentifier == tile.GroupIdentifier {
+				if t.OwnerID == nil || *t.OwnerID != ownerID {
+					allOwned = false
+					break
+				}
+			}
+		}
+		if allOwned {
+			// Rule: Double rent if unimproved
+			if tile.BuildingCount == 0 {
+				if tile.RentColorGroup > 0 {
+					return tile.RentColorGroup // Use explicit column if present
+				}
+				return tile.RentBase * 2
+			}
+		}
+	}
+
+	return tile.RentBase
 }
 
 func (s *GameService) getLayoutID(index int) string {

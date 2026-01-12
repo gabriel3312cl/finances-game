@@ -24,6 +24,19 @@ interface Tile {
     group_identifier?: string;
     building_count?: number;
     is_mortgaged?: boolean;
+    // Extended Info
+    group_name?: string;
+    group_color?: string;
+    rent_base?: number;
+    rent_color_group?: number;
+    rent_1_house?: number;
+    rent_2_house?: number;
+    rent_3_house?: number;
+    rent_4_house?: number;
+    rent_hotel?: number;
+    house_cost?: number;
+    hotel_cost?: number;
+    mortgage_value?: number;
 }
 
 interface GameState {

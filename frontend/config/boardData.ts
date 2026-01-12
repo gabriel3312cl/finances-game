@@ -8,6 +8,18 @@ export interface TileData {
     color?: string; // CSS color or Tailwind class
     groupId?: string; // 1.1, 1.2, etc. (Deprecated in UI, use groupName)
     groupName?: string; // e.g., "Cerro Navia"
+    buildingCount?: number;
+    // Extended Rent Info
+    rent_base?: number;
+    rent_color_group?: number;
+    rent_1_house?: number;
+    rent_2_house?: number;
+    rent_3_house?: number;
+    rent_4_house?: number;
+    rent_hotel?: number;
+    house_cost?: number;
+    hotel_cost?: number;
+    mortgage_value?: number;
     rent?: number;
     propertyId?: string; // Backend ID (e.g. 1.1.1)
 }

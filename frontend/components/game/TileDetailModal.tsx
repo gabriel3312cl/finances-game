@@ -53,27 +53,35 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
 
                         <PaperSection title="Alquiler">
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography>Alquiler Base</Typography>
-                                <Typography fontWeight="bold">${rent}</Typography>
+                                <Typography variant="body2">Base</Typography>
+                                <Typography variant="body2" fontWeight="bold">${tile.rent_base}</Typography>
                             </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
-                                <Typography variant="body2">Con 1 Casa</Typography>
-                                <Typography variant="body2">${rent * 5}</Typography>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', color: tile.rent_color_group ? 'primary.main' : 'text.disabled' }}>
+                                <Typography variant="body2">Grupo Completo</Typography>
+                                <Typography variant="body2">${tile.rent_color_group || (tile.rent_base || 0) * 2}</Typography>
                             </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
-                                <Typography variant="body2">Con Hotel</Typography>
-                                <Typography variant="body2">${rent * 50}</Typography>
+                            <Divider sx={{ my: 1 }} />
+                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 0.5 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">1 Casa</Typography><Typography variant="body2">${tile.rent_1_house}</Typography></Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">2 Casas</Typography><Typography variant="body2">${tile.rent_2_house}</Typography></Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">3 Casas</Typography><Typography variant="body2">${tile.rent_3_house}</Typography></Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">4 Casas</Typography><Typography variant="body2">${tile.rent_4_house}</Typography></Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'error.main' }}><Typography variant="body2">Hotel</Typography><Typography variant="body2">${tile.rent_hotel}</Typography></Box>
                             </Box>
                         </PaperSection>
 
                         <PaperSection title="Costos">
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2">Valor Hipoteca</Typography>
-                                <Typography variant="body2" fontWeight="bold">${(tile.price || 0) / 2}</Typography>
+                                <Typography variant="body2">Casa</Typography>
+                                <Typography variant="body2" fontWeight="bold">${tile.house_cost}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2">Costo Casa</Typography>
-                                <Typography variant="body2" fontWeight="bold">${(tile.price || 0)}</Typography>
+                                <Typography variant="body2">Hotel</Typography>
+                                <Typography variant="body2" fontWeight="bold">${tile.hotel_cost}</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                                <Typography variant="body2">Valor Hipoteca</Typography>
+                                <Typography variant="body2">${tile.mortgage_value}</Typography>
                             </Box>
                         </PaperSection>
                     </>
@@ -86,8 +94,8 @@ export default function TileDetailModal({ tile, gameState, onClose }: TileDetail
                 <Box sx={{ mt: 3, textAlign: 'center' }}>
                     <Button onClick={onClose} variant="outlined" color="inherit">Cerrar</Button>
                 </Box>
-            </DialogContent>
-        </Dialog>
+            </DialogContent >
+        </Dialog >
     );
 }
 
