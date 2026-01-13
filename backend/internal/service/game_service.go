@@ -59,10 +59,16 @@ func (s *GameService) loadActiveGames() {
 // ... existing code ...
 
 func (s *GameService) addLog(game *domain.GameState, message string, logType string) {
+	s.addLogWithMeta(game, message, logType, nil, nil)
+}
+
+func (s *GameService) addLogWithMeta(game *domain.GameState, message string, logType string, tileID *int, userID *string) {
 	entry := domain.EventLog{
 		Timestamp: time.Now().Unix(),
 		Message:   message,
 		Type:      logType,
+		TileID:    tileID,
+		UserID:    userID,
 	}
 	game.Logs = append(game.Logs, entry)
 	game.LastAction = message // Keep legacy field for now
@@ -566,17 +572,21 @@ func (s *GameService) handleDrawCard(game *domain.GameState, userID string) {
 		if target == "GO" {
 			player.Position = 0
 			player.Balance += 200 // Standard pass go
+			s.trackTileVisit(game, player, 0)
 			s.addLog(game, "Avanzó hasta la SALIDA", "action")
 		} else if target == "GO_BONUS" {
 			player.Position = 0
 			player.Balance += 500 // User requested 500
+			s.trackTileVisit(game, player, 0)
 			s.addLog(game, "Avanzó a Salida (Bonus $500)", "SUCCESS")
 		} else if target == "JAIL" {
 			player.InJail = true
-			player.Position = 10
+			player.Position = 16
+			s.trackTileVisit(game, player, 16)
 			s.addLog(game, "Fue enviado a la Cárcel", "ALERT")
 		} else if target == "-3" {
 			player.Position = (player.Position - 3 + domain.BoardSize) % domain.BoardSize
+			s.trackTileVisit(game, player, player.Position)
 			s.addLog(game, "Retrocedió 3 espacios", "action")
 		} else if target == "nearest_railroad" {
 			// Find next railroad
@@ -584,6 +594,7 @@ func (s *GameService) handleDrawCard(game *domain.GameState, userID string) {
 				pos := (player.Position + i) % domain.BoardSize
 				if s.getLayoutType(pos) == "RAILROAD" {
 					player.Position = pos
+					s.trackTileVisit(game, player, pos)
 					s.addLog(game, "Avanzó al ferrocarril más cercano", "action")
 					// TODO: Logic for paying double?
 					break
@@ -594,6 +605,7 @@ func (s *GameService) handleDrawCard(game *domain.GameState, userID string) {
 				pos := (player.Position + i) % domain.BoardSize
 				if s.getLayoutType(pos) == "UTILITY" {
 					player.Position = pos
+					s.trackTileVisit(game, player, pos)
 					s.addLog(game, "Avanzó a la utilidad más cercana", "action")
 					break
 				}
@@ -601,9 +613,11 @@ func (s *GameService) handleDrawCard(game *domain.GameState, userID string) {
 		} else if target == "random_property" {
 			// simplified: move next property
 			player.Position = (player.Position + 1) % domain.BoardSize
+			s.trackTileVisit(game, player, player.Position)
 			s.addLog(game, "Avanzó (Aleatorio)", "action")
 		} else if target == "last_property" {
 			player.Position = domain.BoardSize - 1 // Last tile?
+			s.trackTileVisit(game, player, player.Position)
 			s.addLog(game, "Avanzó a la última casilla", "action")
 		} else if target == "av-ossa" {
 			// Need precise index lookup. For now, approximate or skip if logic not ready.
@@ -945,10 +959,7 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 		currentPlayer.Position = newPos
 
 		// Track Visits
-		if game.TileVisits == nil {
-			game.TileVisits = make(map[int]int)
-		}
-		game.TileVisits[newPos]++
+		s.trackTileVisit(game, currentPlayer, newPos)
 
 		// Check Pass Go
 		var passGoMsg string
@@ -1020,6 +1031,7 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 			case 48: // Go To Jail
 				currentPlayer.Position = 16 // Jail
 				currentPlayer.InJail = true
+				s.trackTileVisit(game, currentPlayer, 16)
 				desc += ". ¡Vaya a la Cárcel!"
 				s.addLog(game, currentPlayer.Name+" fue enviado a la cárcel", "ALERT")
 			}
@@ -1401,6 +1413,21 @@ func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, d
 	}
 
 	return tile.RentBase
+}
+
+func (s *GameService) trackTileVisit(game *domain.GameState, player *domain.PlayerState, pos int) {
+	if game.TileVisits == nil {
+		game.TileVisits = make(map[int]int)
+	}
+	game.TileVisits[pos]++
+
+	if player.TileVisits == nil {
+		player.TileVisits = make(map[int]int)
+	}
+	player.TileVisits[pos]++
+
+	// Log movement for history tracking (Heatmap reconstruction)
+	s.addLogWithMeta(game, "", "MOVEMENT", &pos, &player.UserID)
 }
 
 func (s *GameService) getLayoutID(index int) string {

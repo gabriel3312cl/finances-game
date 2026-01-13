@@ -13,7 +13,7 @@ import TradeModal from './TradeModal';
 import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
-import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake } from '@mui/icons-material';
+import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person } from '@mui/icons-material';
 
 export default function GameBoard() {
     // State from Store
@@ -83,6 +83,7 @@ export default function GameBoard() {
     const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
     const [hiddenCardId, setHiddenCardId] = useState<number | null>(null);
     const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
+    const [minimapLayer, setMinimapLayer] = useState<'group' | 'owner' | 'globalHeatmap'>('group');
 
     // ...
 
@@ -250,8 +251,40 @@ export default function GameBoard() {
                         gridTemplateRows: 'repeat(17, 1fr)',
                         p: 0.5,
                         gap: '1px',
-                        mt: 2
+                        mt: 2,
+                        position: 'relative'
                     }}>
+                        {/* Layer Toggles */}
+                        <Box sx={{ position: 'absolute', top: -40, right: 0, display: 'flex', gap: 1, bgcolor: 'rgba(0,0,0,0.5)', borderRadius: 1, p: 0.5 }}>
+                            <Tooltip title="Ver por Grupos">
+                                <IconButton
+                                    size="small"
+                                    onClick={() => setMinimapLayer('group')}
+                                    sx={{ color: minimapLayer === 'group' ? 'primary.main' : 'grey.500' }}
+                                >
+                                    <Palette fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Ver por Dueños">
+                                <IconButton
+                                    size="small"
+                                    onClick={() => setMinimapLayer('owner')}
+                                    sx={{ color: minimapLayer === 'owner' ? 'secondary.main' : 'grey.500' }}
+                                >
+                                    <Person fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Mapa de Calor Global">
+                                <IconButton
+                                    size="small"
+                                    onClick={() => setMinimapLayer('globalHeatmap')}
+                                    sx={{ color: minimapLayer === 'globalHeatmap' ? 'orange' : 'grey.500' }}
+                                >
+                                    <LocalFireDepartment fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                        </Box>
+
                         {(() => {
                             // Render full 17x17 grid (64 tiles + empty center)
                             const cells = [];
@@ -266,6 +299,24 @@ export default function GameBoard() {
                                 }
                             });
 
+                            // Calculate heatmap data based on selected layer
+                            const getHeatmapData = () => {
+                                if (minimapLayer === 'globalHeatmap') {
+                                    return gameState?.tile_visits || {};
+                                }
+                                return {};
+                            };
+
+                            const heatmapData = getHeatmapData();
+                            const maxVisits = Math.max(1, ...Object.values(heatmapData).map(v => Number(v) || 0));
+
+                            const getHeatmapColor = (visits: number) => {
+                                if (!visits) return '#1e293b'; // Base background
+                                const intensity = Math.min(100, Math.floor((visits / maxVisits) * 100));
+                                // Fire style: Yellow (60) to Red (0)
+                                return `hsl(${60 - intensity * 0.6}, 100%, ${Math.max(20, 100 - intensity / 2)}%)`;
+                            };
+
 
                             return gridCells.map((tile, i) => {
                                 // Lanes mapping
@@ -279,11 +330,6 @@ export default function GameBoard() {
                                     else if (id < 48) laneIndex = 2;
                                     else laneIndex = 3;
 
-                                    // Special case for shared corners if we want smoother feel, but explicit ranges work.
-                                    // Adjusted ranges slightly to include start corner in previous lane? 
-                                    // Let's stick to the visual ranges:
-                                    // Lane 0: 0-16. Lane 1: 16-32. Lane 2: 32-48. Lane 3: 48-63.
-
                                     if (currentLane === 0 && (id >= 0 && id <= 16)) isFocused = true;
                                     else if (currentLane === 1 && (id >= 16 && id <= 32)) isFocused = true;
                                     else if (currentLane === 2 && (id >= 32 && id <= 48)) isFocused = true;
@@ -295,6 +341,25 @@ export default function GameBoard() {
                                 // Check if player is here
                                 const playerHere = gameState.players.find((p: any) => p.position === tile.id);
 
+                                // Determine Cell Color based on Layer
+                                let cellColor = '#94a3b8'; // Default grey
+                                if (tile) {
+                                    if (minimapLayer === 'group') {
+                                        cellColor = tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0');
+                                    } else if (minimapLayer === 'owner') {
+                                        // Owner Layer
+                                        if (tile.propertyId) {
+                                            const ownerColor = getOwnerColor(gameState, tile.propertyId);
+                                            cellColor = ownerColor || 'rgba(255,255,255,0.1)';
+                                        } else {
+                                            cellColor = '#475569'; // Neutral dark for unownable
+                                        }
+                                    } else if (minimapLayer === 'globalHeatmap') {
+                                        const visits = gameState.tile_visits?.[tile.id] || 0;
+                                        cellColor = getHeatmapColor(visits);
+                                    }
+                                }
+
                                 return (
                                     <Box
                                         key={tile.id}
@@ -303,11 +368,11 @@ export default function GameBoard() {
                                         }}
                                         sx={{
                                             width: '100%', height: '100%',
-                                            bgcolor: playerHere ? playerHere.token_color : (tile.color || (['CORNER', 'JAIL_VISIT', 'FREE_PARKING', 'GO_TO_JAIL'].includes(tile.type) ? '#94a3b8' : '#e2e8f0')),
-                                            border: playerHere ? '1px solid white' : 'none',
+                                            bgcolor: playerHere ? playerHere.token_color : cellColor,
+                                            border: playerHere ? '1px solid white' : (minimapLayer === 'owner' && tile.propertyId && !getOwnerColor(gameState, tile.propertyId) ? '1px dashed rgba(255,255,255,0.1)' : 'none'),
                                             borderRadius: '2px',
                                             opacity: isFocused ? 1 : 0.3, // Dim non-focused lanes
-                                            transition: 'opacity 0.3s',
+                                            transition: 'opacity 0.3s, background-color 0.3s',
                                             cursor: 'pointer',
                                             '&:hover': { opacity: 1, transform: 'scale(1.1)', zIndex: 10 }
                                         }}>

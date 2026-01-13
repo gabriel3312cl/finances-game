@@ -39,6 +39,14 @@ interface Tile {
     mortgage_value?: number;
 }
 
+interface EventLog {
+    timestamp: number;
+    message: string;
+    type: string;
+    tile_id?: number;
+    user_id?: string;
+}
+
 interface GameState {
     game_id: string;
     players: Player[];
@@ -51,7 +59,7 @@ interface GameState {
     active_trade?: any;
     property_ownership: Record<string, string>;
     tile_visits: Record<number, number>;
-    logs: any[];
+    logs: EventLog[];
     turn_order: string[];
     drawn_card?: { id: number; type: string; title?: string; description: string; effect: string };
 }

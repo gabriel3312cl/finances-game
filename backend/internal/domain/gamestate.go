@@ -35,9 +35,11 @@ type Card struct {
 }
 
 type EventLog struct {
-	Timestamp int64  `json:"timestamp"`
-	Message   string `json:"message"`
-	Type      string `json:"type"` // INFO, ACTION, ALERT, DICE
+	Timestamp int64   `json:"timestamp"`
+	Message   string  `json:"message"`
+	Type      string  `json:"type"` // INFO, ACTION, ALERT, DICE
+	TileID    *int    `json:"tile_id,omitempty"`
+	UserID    *string `json:"user_id,omitempty"`
 }
 
 const (
@@ -61,14 +63,15 @@ type TradeOffer struct {
 }
 
 type PlayerState struct {
-	UserID     string `json:"user_id"`
-	Name       string `json:"name"`
-	TokenColor string `json:"token_color"`
-	Balance    int    `json:"balance"`
-	Position   int    `json:"position"` // 0-63 (assuming 17x17 board loop)
-	InJail     bool   `json:"in_jail"`
-	IsActive   bool   `json:"is_active"`
-	Loan       int    `json:"loan"`
+	UserID     string      `json:"user_id"`
+	Name       string      `json:"name"`
+	TokenColor string      `json:"token_color"`
+	Balance    int         `json:"balance"`
+	Position   int         `json:"position"` // 0-63 (assuming 17x17 board loop)
+	InJail     bool        `json:"in_jail"`
+	IsActive   bool        `json:"is_active"`
+	Loan       int         `json:"loan"`
+	TileVisits map[int]int `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
 }
 
 type Tile struct {
