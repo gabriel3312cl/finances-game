@@ -48,31 +48,37 @@ export default function GameBoard() {
 
     // Map API data (snake_case) to Frontend TileData (camelCase)
     // If API is loading/empty, boardTiles is empty array
-    const boardTiles: TileData[] = (boardDataApi || []).map((t: any) => ({
-        id: t.id,
-        type: t.type,
-        name: t.name,
-        propertyId: t.property_id,
-        groupId: t.group_identifier,
-        price: t.price,
-        rent: t.rent,
-        buildingCount: t.building_count,
-        // Map Color
-        color: t.group_color,
-        groupName: t.group_name,
-        // Extended
-        rent_base: t.rent_base,
-        rent_color_group: t.rent_color_group,
-        rent_1_house: t.rent_1_house,
-        rent_2_house: t.rent_2_house,
-        rent_3_house: t.rent_3_house,
-        rent_4_house: t.rent_4_house,
-        rent_hotel: t.rent_hotel,
-        house_cost: t.house_cost,
-        hotel_cost: t.hotel_cost,
-        mortgage_value: t.mortgage_value,
-        rent_rule: t.rent_rule // Map Rent Rule Logic
-    }));
+    // Merge dynamic data from gameState.board (building_count) with static config from API
+    const boardTiles: TileData[] = (boardDataApi || []).map((t: any) => {
+        // Find corresponding dynamic tile from gameState.board
+        const dynamicTile = gameState?.board?.find((dt: any) => dt.id === t.id);
+
+        return {
+            id: t.id,
+            type: t.type,
+            name: t.name,
+            propertyId: t.property_id,
+            groupId: t.group_identifier,
+            price: t.price,
+            rent: t.rent,
+            buildingCount: dynamicTile?.building_count ?? t.building_count ?? 0, // Prioritize dynamic
+            // Map Color
+            color: t.group_color,
+            groupName: t.group_name,
+            // Extended
+            rent_base: t.rent_base,
+            rent_color_group: t.rent_color_group,
+            rent_1_house: t.rent_1_house,
+            rent_2_house: t.rent_2_house,
+            rent_3_house: t.rent_3_house,
+            rent_4_house: t.rent_4_house,
+            rent_hotel: t.rent_hotel,
+            house_cost: t.house_cost,
+            hotel_cost: t.hotel_cost,
+            mortgage_value: t.mortgage_value,
+            rent_rule: t.rent_rule // Map Rent Rule Logic
+        };
+    });
 
     // Local UI State
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);

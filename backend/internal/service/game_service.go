@@ -385,6 +385,10 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handlePayRent(game, userID, action.Payload)
 	case "COLLECT_RENT": // New Manual Action
 		s.handleCollectRent(game, userID)
+	case "BUY_BUILDING":
+		s.handleBuyBuilding(game, userID, action.Payload)
+	case "SELL_BUILDING":
+		s.handleSellBuilding(game, userID, action.Payload)
 	}
 }
 
@@ -1469,4 +1473,215 @@ func (s *GameService) handlePayRent(game *domain.GameState, userID string, paylo
 
 	// Delegate to single source of truth handler
 	s.handleCollectRent(game, userID)
+}
+
+func (s *GameService) handleBuyBuilding(game *domain.GameState, userID string, payload json.RawMessage) {
+	// 1. Verify Turn and Active Status
+	if game.Status != domain.GameStatusActive || game.CurrentTurnID != userID {
+		s.addLog(game, "No es tu turno.", "ALERT")
+		return
+	}
+
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	// 2. Verify Property Ownership
+	ownerID, isOwned := game.PropertyOwnership[req.PropertyID]
+	if !isOwned || ownerID != userID {
+		s.addLog(game, "No eres dueño de esta propiedad.", "ALERT")
+		return
+	}
+
+	// Find the tile logic index
+	var tileIndex = -1
+	var targetTile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tileIndex = i
+			targetTile = &game.Board[i]
+			break
+		}
+	}
+
+	if targetTile == nil || targetTile.GroupIdentifier == "" {
+		s.addLog(game, "Esta propiedad no permite construcción.", "ALERT")
+		return
+	}
+
+	// 3. Verify Monopoly (All properties of same group owned by user)
+	// Also gather building counts for "Even Build" rule
+	groupTiles := []*domain.Tile{}
+	minBuildings := 5 // Start high
+	maxBuildings := 0
+
+	for i := range game.Board {
+		t := &game.Board[i]
+		if t.GroupIdentifier == targetTile.GroupIdentifier {
+			// Check ownership
+			oid, ok := game.PropertyOwnership[t.PropertyID]
+			if !ok || oid != userID {
+				s.addLog(game, "Debes poseer todo el grupo de color ("+targetTile.GroupIdentifier+") para construir.", "ALERT")
+				return
+			}
+			// Check if mortgaged? (Assuming rules say no building if any in group is mortgaged is common, but let's stick to basic first.
+			// Standard rules: "You cannot build on any property of that color group if any one of them is mortgaged."
+			if t.IsMortgaged {
+				s.addLog(game, "No puedes construir si hay propiedades hipotecadas en el grupo.", "ALERT")
+				return
+			}
+
+			groupTiles = append(groupTiles, t)
+			if t.BuildingCount < minBuildings {
+				minBuildings = t.BuildingCount
+			}
+			if t.BuildingCount > maxBuildings {
+				maxBuildings = t.BuildingCount
+			}
+		}
+	}
+
+	// 4. Validate Max Limit
+	if targetTile.BuildingCount >= 5 {
+		s.addLog(game, "Ya has alcanzado el límite de construcción (Hotel).", "ALERT")
+		return
+	}
+
+	// 5. Validate "Even Build" Rule
+	// You must build evenly. You cannot build a 2nd house on a property until ALL have 1.
+	// This means targetTile.BuildingCount must be == minBuildings.
+	// Example: [1, 1, 0]. min=0. Can I build on the 1s? No. Must build on the 0.
+	// Example: [1, 1, 1]. min=1. Can build on any (becoming 2).
+	if targetTile.BuildingCount > minBuildings {
+		s.addLog(game, "Debes construir uniformemente en el grupo.", "ALERT")
+		return
+	}
+
+	// 6. Check Funds
+	cost := targetTile.HouseCost
+	if targetTile.BuildingCount == 4 {
+		cost = targetTile.HotelCost // Usually same, but good to be explicit
+	}
+
+	player := s.getPlayer(game, userID)
+	if player.Balance < cost {
+		s.addLog(game, "Fondos insuficientes. Costo: $"+strconv.Itoa(cost), "ALERT")
+		return
+	}
+
+	// 7. Execute Purchase
+	player.Balance -= cost
+	targetTile.BuildingCount++
+
+	// Log
+	levelName := "Casa"
+	if targetTile.BuildingCount == 5 {
+		levelName = "Hotel"
+	} else if targetTile.BuildingCount > 1 {
+		levelName = strconv.Itoa(targetTile.BuildingCount) + " Casas"
+	}
+
+	s.addLogWithMeta(game, player.Name+" compró "+levelName+" en "+targetTile.Name, "SUCCESS", &tileIndex, &userID)
+	s.saveGame(game) // Persist state
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handleSellBuilding(game *domain.GameState, userID string, payload json.RawMessage) {
+	// 1. Verify Turn and Active Status
+	if game.Status != domain.GameStatusActive || game.CurrentTurnID != userID {
+		s.addLog(game, "No es tu turno.", "ALERT")
+		return
+	}
+
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	// 2. Verify Property Ownership
+	ownerID, isOwned := game.PropertyOwnership[req.PropertyID]
+	if !isOwned || ownerID != userID {
+		s.addLog(game, "No eres dueño de esta propiedad.", "ALERT")
+		return
+	}
+
+	// Find the tile logic index
+	var tileIndex = -1
+	var targetTile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tileIndex = i
+			targetTile = &game.Board[i]
+			break
+		}
+	}
+
+	if targetTile == nil || targetTile.BuildingCount == 0 {
+		s.addLog(game, "No hay construcciones para vender.", "ALERT")
+		return
+	}
+
+	// 3. Verify Even Sell (Reverse of Even Build)
+	// You must sell evenly. (Max - Min <= 1).
+	// To sell a house, this property must have the MAX count in the group.
+	// Example: [4, 4, 3]. Can I sell on the 3? No, violates even build. Must sell on 4s.
+
+	currentBuildings := targetTile.BuildingCount
+	maxBuildings := 0
+
+	// Scan group
+	for i := range game.Board {
+		t := &game.Board[i]
+		if t.GroupIdentifier == targetTile.GroupIdentifier {
+			// All must be owned by same user (still check for robustness)
+			if t.BuildingCount > maxBuildings {
+				maxBuildings = t.BuildingCount
+			}
+		}
+	}
+
+	if currentBuildings < maxBuildings {
+		s.addLog(game, "Debes vender edificios de forma uniforme.", "ALERT")
+		return
+	}
+
+	// 4. Calculate Refund (Half Price)
+	refund := targetTile.HouseCost / 2
+	if targetTile.BuildingCount == 5 {
+		refund = targetTile.HotelCost / 2
+	}
+
+	// 5. Execute Sale
+	player := s.getPlayer(game, userID)
+	player.Balance += refund
+	targetTile.BuildingCount--
+
+	// Log
+	remaining := targetTile.BuildingCount
+	msg := player.Name + " vendió un edificio en " + targetTile.Name + ". Ahora tiene "
+	if remaining == 5 {
+		msg += "un Hotel." // Shouldn't happen if selling DOWN from hotel
+	} else if remaining == 0 {
+		msg += "0 casas."
+	} else {
+		msg += strconv.Itoa(remaining) + " casas."
+	}
+
+	s.addLogWithMeta(game, msg, "SUCCESS", &tileIndex, &userID)
+	s.saveGame(game) // Persist state
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) getPlayer(game *domain.GameState, userID string) *domain.PlayerState {
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			return p
+		}
+	}
+	return nil
 }

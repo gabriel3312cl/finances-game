@@ -1,7 +1,7 @@
 import React from 'react';
 import { TileData, getGridPosition } from '@/config/boardData';
 import { Box, Typography } from '@mui/material';
-import { Train, Lightbulb, HelpOutline, Inventory2 } from '@mui/icons-material';
+import { Train, Lightbulb, HelpOutline, Inventory2, House, Apartment } from '@mui/icons-material';
 
 interface BoardTileProps {
     tile: TileData;
@@ -40,6 +40,53 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
         if (row === 1) return { borderBottom: borderStyle };
         if (col === 17) return { borderLeft: borderStyle };
         return {};
+    };
+
+    // Style logic for Housing Icons position
+    const getHousingIconStyle = () => {
+        const style: any = { position: 'absolute', display: 'flex', gap: 0.2, zIndex: 10 };
+
+        // Default (Bottom Row / Normal): Bar is Top. Icons below it.
+        if (!tile.color) {
+            // No color bar? Top Right default.
+            return { ...style, top: 2, right: 2 };
+        }
+
+        // Default Style (Top-Centered under bar)
+        const setTopCentered = () => {
+            style.top = '14px'; // Below 8px bar + padding
+            style.left = '50%';
+            style.transform = 'translateX(-50%)';
+            style.flexDirection = 'row';
+        };
+
+        if (forceTopBar) {
+            setTopCentered();
+            return style;
+        }
+
+        if (row === 17) { // Bottom Lane (Bar Top)
+            setTopCentered();
+        } else if (row === 1) { // Top Lane (Bar Bottom)
+            style.bottom = '14px';
+            style.left = '50%';
+            style.transform = 'translateX(-50%)';
+        } else if (col === 1) { // Left Lane (Bar Right)
+            style.right = '14px';
+            style.top = '50%';
+            style.transform = 'translateY(-50%)';
+            style.flexDirection = 'column';
+        } else if (col === 17) { // Right Lane (Bar Left)
+            style.left = '14px';
+            style.top = '50%';
+            style.transform = 'translateY(-50%)';
+            style.flexDirection = 'column';
+        } else {
+            // Fallback
+            style.top = 2;
+            style.right = 2;
+        }
+        return style;
     };
 
     return (
@@ -94,6 +141,27 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
             {tile.type === 'UTILITY' && <WatermarkIcon icon={<Lightbulb fontSize="large" />} />}
             {tile.type === 'CHANCE' && <WatermarkIcon icon={<HelpOutline fontSize="large" />} />}
             {tile.type === 'COMMUNITY' && <WatermarkIcon icon={<Inventory2 fontSize="large" />} />}
+
+            {/* Housing Icons */}
+            {(() => {
+                const count = (tile as any).building_count || tile.buildingCount || 0;
+                if (count <= 0) return null;
+
+                return (
+                    <Box sx={getHousingIconStyle()}>
+                        {count === 5 ? (
+                            <Apartment sx={{ color: '#d32f2f', fontSize: '2rem', filter: 'drop-shadow(1px 1px 0 rgba(255,255,255,0.8))' }} />
+                        ) : (
+                            <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: 'rgba(255,255,255,0.85)', borderRadius: 2, px: 0.8, py: 0.2, boxShadow: 1 }}>
+                                <House sx={{ color: '#2e7d32', fontSize: '1.4rem' }} />
+                                <Typography variant="body2" sx={{ fontWeight: '900', color: '#1b5e20', ml: 0.5, fontSize: '1.1rem' }}>
+                                    x{count}
+                                </Typography>
+                            </Box>
+                        )}
+                    </Box>
+                );
+            })()}
 
             {/* Players on Tile */}
             {players && players.length > 0 && (

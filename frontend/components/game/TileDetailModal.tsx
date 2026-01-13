@@ -65,7 +65,10 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
         // Monopoly Logic for Standard Properties
         if (tile.type === 'PROPERTY') {
             isMonopoly = ownedCount === totalInGroup;
-            const houseCount = tile.buildingCount || 0;
+            // Find live tile data from board to get current building count
+            const liveTile = board.find((t: any) => (t.id === tile.id) || (t.property_id === tile.propertyId));
+            const houseCount = liveTile?.building_count || liveTile?.buildingCount || tile.buildingCount || 0;
+
             if (houseCount === 5) isActiveLevel = 5;
             else if (houseCount > 0) isActiveLevel = houseCount;
             else isActiveLevel = 0;
@@ -100,6 +103,22 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
             }
             return { dimmed: true, active: false, bad: false };
         }
+    };
+
+
+
+    // Buying/Selling Logic
+    const canBuy = isMeOwner && isMonopoly && isActiveLevel < 5 && gameState?.current_turn_id === user?.user_id; // + Even Build check (implicit backend, visual check ignored for now)
+    const canSell = isMeOwner && isActiveLevel > 0 && gameState?.current_turn_id === user?.user_id;
+
+    const handleBuyBuilding = () => {
+        if (!canBuy) return;
+        sendMessage("BUY_BUILDING", { property_id: propertyId });
+    };
+
+    const handleSellBuilding = () => {
+        if (!canSell) return;
+        sendMessage("SELL_BUILDING", { property_id: propertyId });
     };
 
     return (
@@ -172,11 +191,15 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
                                     {/* Base Rent */}
                                     {(() => {
                                         const { dimmed, active, bad } = getRowState(0, true);
+                                        // Show doubled rent if Monopoly and 0 houses
+                                        const showDoubled = isMonopoly && isActiveLevel === 0 && tile.type === 'PROPERTY';
+                                        const displayValue = showDoubled ? (tile.rent_color_group || (tile.rent_base ? tile.rent_base * 2 : 0)) : tile.rent_base;
+
                                         return (
                                             <Box sx={{ mb: 1 }}>
                                                 <RentRow
-                                                    label="ALQUILER"
-                                                    value={tile.rent_base}
+                                                    label={showDoubled ? "ALQUILER (x2 por Grupo Computo)" : "ALQUILER"}
+                                                    value={displayValue}
                                                     isActive={active}
                                                     isBad={bad}
                                                     isDimmed={dimmed}
@@ -366,6 +389,42 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
                         </Box>
                     );
                 })()}
+
+                {/* BUY BUTTON */}
+                {tile.type === 'PROPERTY' && isMeOwner && (
+                    <Box sx={{ mt: 2, borderTop: '1px solid black', pt: 2, textAlign: 'center' }}>
+                        <Button
+                            variant="contained"
+                            color="success"
+                            disabled={!canBuy}
+                            onClick={handleBuyBuilding}
+                            title={!isMonopoly ? "Necesitas poseer todo el grupo" : (gameState?.current_turn_id !== user?.user_id ? "No es tu turno" : "")}
+                        >
+                            {isActiveLevel === 4 ? "COMPRAR HOTEL" : "COMPRAR CASA"} (${isActiveLevel === 4 ? tile.hotel_cost : tile.house_cost})
+                        </Button>
+                        <Box sx={{ mt: 1 }}>
+                            <Typography variant="caption" color="text.secondary">
+                                {isActiveLevel === 5 ? "Máximo nivel alcanzado" :
+                                    (!isMonopoly ? "Necesitas Monopolio para construir" :
+                                        (!canBuy ? "Espera tu turno" : "Puedes construir casas/hoteles"))}
+                            </Typography>
+                        </Box>
+
+                        {/* SELL BUTTON */}
+                        {isActiveLevel > 0 && (
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                onClick={handleSellBuilding}
+                                disabled={!canSell}
+                                sx={{ mt: 1, display: 'block', mx: 'auto' }}
+                            >
+                                VENDER EDIFICIO (Reembolso 50%)
+                            </Button>
+                        )}
+                    </Box>
+                )}
 
                 <Box sx={{ textAlign: 'center', mt: 2 }}>
                     <Button onClick={onClose} sx={{ color: 'black', fontWeight: 'bold', border: '1px solid black' }}>CERRAR</Button>
