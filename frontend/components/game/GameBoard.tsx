@@ -232,8 +232,13 @@ export default function GameBoard() {
                             const tilesToRender = (currentLane === 0 || currentLane === 1) ? indices.reverse() : indices;
 
                             return tilesToRender.map(i => {
-                                const tile = boardTiles.find(t => t.id === i);
-                                if (!tile) return null;
+                                const staticTile = boardTiles.find(t => t.id === i);
+                                if (!staticTile) return null;
+
+                                // Merge with dynamic state
+                                const dynamicTile = gameState.board?.find((t: any) => t.id === i) || {};
+                                const tile: any = { ...staticTile, ...dynamicTile };
+
                                 return (
                                     <Box key={i} sx={{ width: 130, height: 130 }}>
                                         <BoardTile
@@ -243,7 +248,7 @@ export default function GameBoard() {
                                             players={gameState.players?.filter((p: any) => p.position === i)}
                                             fontScale={0.7}
                                             forceTopBar={true}
-                                            ownerColor={tile.propertyId ? getOwnerColor(gameState, tile.propertyId) : undefined}
+                                            ownerColor={tile.property_id || tile.propertyId ? getOwnerColor(gameState, tile.property_id || tile.propertyId) : undefined}
                                         />
                                     </Box>
                                 );

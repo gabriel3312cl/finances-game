@@ -485,6 +485,12 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleBuyBuilding(game, userID, action.Payload)
 	case "SELL_BUILDING":
 		s.handleSellBuilding(game, userID, action.Payload)
+	case "MORTGAGE_PROPERTY":
+		s.handleMortgageProperty(game, userID, action.Payload)
+	case "UNMORTGAGE_PROPERTY":
+		s.handleUnmortgageProperty(game, userID, action.Payload)
+	case "SELL_PROPERTY":
+		s.handleSellProperty(game, userID, action.Payload)
 	}
 }
 
@@ -1854,4 +1860,221 @@ func (s *GameService) getPlayer(game *domain.GameState, userID string) *domain.P
 		}
 	}
 	return nil
+}
+
+// handleMortgageProperty allows a player to mortgage a property they own
+// Rules: Cannot mortgage if property has buildings, cannot mortgage if any property in group has buildings
+func (s *GameService) handleMortgageProperty(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	player := s.getPlayer(game, userID)
+	if player == nil {
+		return
+	}
+
+	// Verify ownership
+	owner, owned := game.PropertyOwnership[req.PropertyID]
+	if !owned || owner != userID {
+		return
+	}
+
+	// Find tile
+	var tile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tile = &game.Board[i]
+			break
+		}
+	}
+	if tile == nil {
+		return
+	}
+
+	// Check if already mortgaged
+	if tile.IsMortgaged {
+		return
+	}
+
+	// Rule: Cannot mortgage if this property has buildings
+	if tile.BuildingCount > 0 {
+		s.addLog(game, "No puedes hipotecar "+tile.Name+" mientras tenga edificios", "ALERT")
+		s.broadcastGameState(game)
+		return
+	}
+
+	// Rule: Cannot mortgage if any property in the same group has buildings
+	if tile.GroupIdentifier != "" {
+		for _, t := range game.Board {
+			ownerID, isOwned := game.PropertyOwnership[t.PropertyID]
+			if isOwned && ownerID == userID && t.GroupIdentifier == tile.GroupIdentifier && t.BuildingCount > 0 {
+				s.addLog(game, "Debes vender las casas de "+t.Name+" antes de hipotecar "+tile.Name, "ALERT")
+				s.broadcastGameState(game)
+				return
+			}
+		}
+	}
+
+	// Execute mortgage
+	tile.IsMortgaged = true
+	mortgageValue := tile.MortgageValue
+	if mortgageValue == 0 {
+		mortgageValue = tile.Price / 2 // Default to 50% if not set
+	}
+	player.Balance += mortgageValue
+
+	s.addLog(game, player.Name+" hipotecó "+tile.Name+" por $"+strconv.Itoa(mortgageValue), "ACTION")
+	s.saveGame(game)
+	s.broadcastGameState(game)
+}
+
+// handleUnmortgageProperty allows a player to pay off the mortgage and restore the property
+// Rules: Must pay mortgage value + 10% interest
+func (s *GameService) handleUnmortgageProperty(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	player := s.getPlayer(game, userID)
+	if player == nil {
+		return
+	}
+
+	// Verify ownership
+	owner, owned := game.PropertyOwnership[req.PropertyID]
+	if !owned || owner != userID {
+		return
+	}
+
+	// Find tile
+	var tile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tile = &game.Board[i]
+			break
+		}
+	}
+	if tile == nil {
+		return
+	}
+
+	// Check if actually mortgaged
+	if !tile.IsMortgaged {
+		return
+	}
+
+	// Calculate unmortgage cost (mortgage value + 10% interest)
+	unmortgageCost := tile.UnmortgageValue
+	if unmortgageCost == 0 {
+		mortgageValue := tile.MortgageValue
+		if mortgageValue == 0 {
+			mortgageValue = tile.Price / 2
+		}
+		unmortgageCost = mortgageValue + (mortgageValue / 10) // +10%
+	}
+
+	// Check if player has enough money
+	if player.Balance < unmortgageCost {
+		s.addLog(game, "Fondos insuficientes para deshipotecar "+tile.Name+" ($"+strconv.Itoa(unmortgageCost)+" requeridos)", "ALERT")
+		s.broadcastGameState(game)
+		return
+	}
+
+	// Execute unmortgage
+	tile.IsMortgaged = false
+	player.Balance -= unmortgageCost
+
+	s.addLog(game, player.Name+" deshipotecó "+tile.Name+" por $"+strconv.Itoa(unmortgageCost), "SUCCESS")
+	s.saveGame(game)
+	s.broadcastGameState(game)
+}
+
+// handleSellProperty allows a player to sell a property back to the bank
+// Rules: Cannot sell if property has buildings, receives 50% of purchase price
+func (s *GameService) handleSellProperty(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		PropertyID string `json:"property_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	player := s.getPlayer(game, userID)
+	if player == nil {
+		return
+	}
+
+	// Verify ownership
+	owner, owned := game.PropertyOwnership[req.PropertyID]
+	if !owned || owner != userID {
+		return
+	}
+
+	// Find tile
+	var tile *domain.Tile
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			tile = &game.Board[i]
+			break
+		}
+	}
+	if tile == nil {
+		return
+	}
+
+	// Rule: Cannot sell if this property has buildings
+	if tile.BuildingCount > 0 {
+		s.addLog(game, "No puedes vender "+tile.Name+" mientras tenga edificios", "ALERT")
+		s.broadcastGameState(game)
+		return
+	}
+
+	// Rule: Cannot sell if any property in the same group has buildings
+	if tile.GroupIdentifier != "" {
+		for _, t := range game.Board {
+			ownerID, isOwned := game.PropertyOwnership[t.PropertyID]
+			if isOwned && ownerID == userID && t.GroupIdentifier == tile.GroupIdentifier && t.BuildingCount > 0 {
+				s.addLog(game, "Debes vender las casas de "+t.Name+" antes de vender "+tile.Name, "ALERT")
+				s.broadcastGameState(game)
+				return
+			}
+		}
+	}
+
+	// Calculate sale price: 50% of property price
+	salePrice := tile.Price / 2
+
+	// If mortgaged, subtract remaining mortgage debt (player receives less)
+	if tile.IsMortgaged {
+		mortgageValue := tile.MortgageValue
+		if mortgageValue == 0 {
+			mortgageValue = tile.Price / 2
+		}
+		// Sale price = 50% - 0 (already got mortgage money), so just clear the mortgage
+		// Actually, when selling mortgaged property:
+		// - Player already got mortgage value when mortgaging
+		// - Now selling for 50% of price would be double-dipping
+		// Correct rule: If mortgaged, sale price = 50% price - mortgage value (could be 0 or negative)
+		salePrice = salePrice - mortgageValue
+		if salePrice < 0 {
+			salePrice = 0
+		}
+	}
+
+	// Execute sale
+	player.Balance += salePrice
+	delete(game.PropertyOwnership, req.PropertyID)
+	tile.IsMortgaged = false // Clear mortgage status
+	tile.OwnerID = nil
+
+	s.addLog(game, player.Name+" vendió "+tile.Name+" al banco por $"+strconv.Itoa(salePrice), "ACTION")
+	s.saveGame(game)
+	s.broadcastGameState(game)
 }

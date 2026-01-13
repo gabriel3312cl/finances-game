@@ -163,6 +163,34 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
                 );
             })()}
 
+            {/* Mortgage Badge */}
+            {((tile as any).is_mortgaged || (tile as any).isMortgaged) && (
+                <Box sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    bgcolor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 15,
+                    pointerEvents: 'none'
+                }}>
+                    <Box sx={{
+                        bgcolor: 'error.main',
+                        color: 'white',
+                        px: 0.5,
+                        py: 0.2,
+                        borderRadius: 1,
+                        fontSize: `${0.5 * fontScale}rem`,
+                        fontWeight: 'bold',
+                        transform: 'rotate(-15deg)',
+                        boxShadow: 2
+                    }}>
+                        HIPOTECADA
+                    </Box>
+                </Box>
+            )}
+
             {/* Players on Tile */}
             {players && players.length > 0 && (
                 <Box sx={{ position: 'absolute', bottom: 2, right: 2, display: 'flex', gap: 0.5, zIndex: 5, flexWrap: 'wrap-reverse', justifyContent: 'flex-end' }}>

@@ -181,14 +181,10 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                                             <Card
                                                 key={tile.id}
                                                 variant="outlined"
-                                                onClick={() => {
-                                                    if (onPropertyClick) onPropertyClick(tile);
-                                                }}
                                                 sx={{
-                                                    mb: 1, display: 'flex', overflow: 'visible', position: 'relative',
-                                                    cursor: onPropertyClick ? 'pointer' : 'default',
-                                                    transition: 'transform 0.1s, border-color 0.1s',
-                                                    '&:hover': onPropertyClick ? { transform: 'scale(1.02)', borderColor: 'primary.main', zIndex: 10 } : {}
+                                                    mb: 1, display: 'flex', flexDirection: 'column', overflow: 'visible', position: 'relative',
+                                                    borderColor: tile.is_mortgaged ? 'error.main' : undefined,
+                                                    opacity: tile.is_mortgaged ? 0.7 : 1
                                                 }}
                                             >
                                                 {/* VISITOR AVATARS */}
@@ -202,14 +198,80 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                                                     </Box>
                                                 )}
 
-                                                <Box sx={{ width: 12, bgcolor: tile.group_color || 'grey.500' }} />
-                                                <CardContent sx={{ flex: 1, py: 1, px: 2, '&:last-child': { pb: 1 } }}>
-                                                    <Typography variant="subtitle2" fontWeight="bold">{tile.name}</Typography>
-                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <Typography variant="caption" color="text.secondary">{tile.group_name}</Typography>
-                                                        <Chip size="small" label={`$${tile.price}`} color="primary" variant="outlined" />
+                                                <Box sx={{ display: 'flex' }}>
+                                                    <Box sx={{ width: 12, bgcolor: tile.group_color || 'grey.500' }} />
+                                                    <CardContent
+                                                        sx={{ flex: 1, py: 1, px: 2, '&:last-child': { pb: 1 }, cursor: onPropertyClick ? 'pointer' : 'default' }}
+                                                        onClick={() => onPropertyClick && onPropertyClick(tile)}
+                                                    >
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <Typography variant="subtitle2" fontWeight="bold">{tile.name}</Typography>
+                                                            {tile.is_mortgaged && (
+                                                                <Chip size="small" label="HIPOTECADA" color="error" sx={{ height: 18, fontSize: '0.65rem' }} />
+                                                            )}
+                                                            {tile.building_count > 0 && tile.building_count < 5 && (
+                                                                <Chip size="small" label={`${tile.building_count} 🏠`} color="success" sx={{ height: 18, fontSize: '0.65rem' }} />
+                                                            )}
+                                                            {tile.building_count === 5 && (
+                                                                <Chip size="small" label="🏨" color="warning" sx={{ height: 18, fontSize: '0.65rem' }} />
+                                                            )}
+                                                        </Box>
+                                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <Typography variant="caption" color="text.secondary">{tile.group_name}</Typography>
+                                                            <Chip size="small" label={`$${tile.price}`} color="primary" variant="outlined" />
+                                                        </Box>
+                                                    </CardContent>
+                                                </Box>
+
+                                                {/* Action Buttons - Only show for own properties */}
+                                                {isMe && (
+                                                    <Box sx={{ display: 'flex', gap: 0.5, p: 1, pt: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                                        {!tile.is_mortgaged && tile.building_count === 0 && (
+                                                            <Button
+                                                                size="small"
+                                                                variant="outlined"
+                                                                color="warning"
+                                                                sx={{ flex: 1, fontSize: '0.7rem', py: 0.3 }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    sendMessage('MORTGAGE_PROPERTY', { property_id: tile.property_id });
+                                                                }}
+                                                            >
+                                                                Hipotecar (${tile.mortgage_value || Math.floor(tile.price / 2)})
+                                                            </Button>
+                                                        )}
+                                                        {tile.is_mortgaged && (
+                                                            <Button
+                                                                size="small"
+                                                                variant="contained"
+                                                                color="success"
+                                                                sx={{ flex: 1, fontSize: '0.7rem', py: 0.3 }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    sendMessage('UNMORTGAGE_PROPERTY', { property_id: tile.property_id });
+                                                                }}
+                                                            >
+                                                                Deshipotecar (${tile.unmortgage_value || Math.floor((tile.mortgage_value || tile.price / 2) * 1.1)})
+                                                            </Button>
+                                                        )}
+                                                        {tile.building_count === 0 && (
+                                                            <Button
+                                                                size="small"
+                                                                variant="outlined"
+                                                                color="error"
+                                                                sx={{ flex: 1, fontSize: '0.7rem', py: 0.3 }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (confirm(`¿Vender ${tile.name} al banco por $${Math.floor(tile.price / 2)}?`)) {
+                                                                        sendMessage('SELL_PROPERTY', { property_id: tile.property_id });
+                                                                    }
+                                                                }}
+                                                            >
+                                                                Vender (${Math.floor(tile.price / 2)})
+                                                            </Button>
+                                                        )}
                                                     </Box>
-                                                </CardContent>
+                                                )}
                                             </Card>
                                         )
                                     })}
