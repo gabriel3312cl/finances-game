@@ -63,15 +63,26 @@ type TradeOffer struct {
 }
 
 type PlayerState struct {
-	UserID     string      `json:"user_id"`
-	Name       string      `json:"name"`
-	TokenColor string      `json:"token_color"`
-	Balance    int         `json:"balance"`
-	Position   int         `json:"position"` // 0-63 (assuming 17x17 board loop)
-	InJail     bool        `json:"in_jail"`
-	IsActive   bool        `json:"is_active"`
-	Loan       int         `json:"loan"`
-	TileVisits map[int]int `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
+	UserID     string         `json:"user_id"`
+	Name       string         `json:"name"`
+	TokenColor string         `json:"token_color"`
+	Balance    int            `json:"balance"`
+	Position   int            `json:"position"` // 0-63 (assuming 17x17 board loop)
+	InJail     bool           `json:"in_jail"`
+	IsActive   bool           `json:"is_active"`
+	Loan       int            `json:"loan"`
+	Credit     *CreditProfile `json:"credit,omitempty"`
+	TileVisits map[int]int    `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
+}
+
+// CreditProfile tracks a player's credit history for dynamic interest rates
+type CreditProfile struct {
+	Score           int `json:"score"`              // 300-850 (like FICO)
+	LoansTaken      int `json:"loans_taken"`        // Total loans taken
+	LoansPaidOnTime int `json:"loans_paid_on_time"` // Paid within 3 rounds
+	RoundsInDebt    int `json:"rounds_in_debt"`     // Consecutive rounds with outstanding debt
+	LastLoanRound   int `json:"last_loan_round"`    // Round when last loan was taken
+	CurrentRound    int `json:"current_round"`      // Current game round (increments on SALIDA)
 }
 
 type Tile struct {

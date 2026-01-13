@@ -63,6 +63,38 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
     const loan = player.loan || 0;
     const netWorth = balance + totalAssetValue - loan;
 
+    // Credit System
+    const credit = player.credit || { score: 700, rounds_in_debt: 0, current_round: 0, last_loan_round: 0 };
+    const creditScore = credit.score || 700;
+    const roundsInDebt = credit.rounds_in_debt || 0;
+
+    // Calculate dynamic rate and limit based on score
+    const getInterestRate = (score: number) => {
+        if (score >= 750) return 5;
+        if (score >= 700) return 10;
+        if (score >= 650) return 15;
+        if (score >= 550) return 25;
+        return 35;
+    };
+    const getCreditLimit = (score: number) => {
+        if (score >= 750) return 8000;
+        if (score >= 700) return 6000;
+        if (score >= 650) return 4000;
+        if (score >= 550) return 2000;
+        return 500;
+    };
+    const getCreditColor = (score: number) => {
+        if (score >= 750) return '#22c55e'; // Green
+        if (score >= 700) return '#84cc16'; // Lime
+        if (score >= 650) return '#eab308'; // Yellow
+        if (score >= 550) return '#f97316'; // Orange
+        return '#ef4444'; // Red
+    };
+
+    const interestRate = getInterestRate(creditScore);
+    const creditLimit = getCreditLimit(creditScore);
+    const creditColor = getCreditColor(creditScore);
+
     const handleTransaction = (type: 'TAKE' | 'PAY') => {
         if (!isMe) return; // Guard
         const amount = parseInt(loanAmount);
@@ -186,11 +218,33 @@ export default function InventoryDrawer({ isOpen, onClose, gameState, user, send
                         </Box>
                     ) : (
                         // BANK TAB
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {/* Credit Score Card */}
+                            <Card variant="outlined" sx={{ textAlign: 'center', p: 2, borderColor: creditColor, borderWidth: 2 }}>
+                                <Typography variant="caption" color="text.secondary">Puntaje Crediticio</Typography>
+                                <Typography variant="h3" fontWeight="bold" sx={{ color: creditColor }}>
+                                    {creditScore}
+                                </Typography>
+                                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 1 }}>
+                                    <Chip label={`Tasa: ${interestRate}%`} size="small" color={interestRate <= 10 ? 'success' : interestRate <= 15 ? 'warning' : 'error'} />
+                                    <Chip label={`Límite: $${creditLimit.toLocaleString()}`} size="small" variant="outlined" />
+                                </Box>
+                                {roundsInDebt > 0 && (
+                                    <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
+                                        ⚠️ {roundsInDebt} ronda(s) en deuda {roundsInDebt >= 3 && '(+10% penalización)'}
+                                    </Typography>
+                                )}
+                            </Card>
+
+                            {/* Current Loan */}
                             <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
                                 <Typography variant="caption" color="text.secondary">Préstamo Actual</Typography>
-                                <Typography variant="h4" color="error" fontWeight="bold">${loan.toLocaleString()}</Typography>
-                                <Typography variant="caption" color="text.secondary">Máximo permitido: $5,000</Typography>
+                                <Typography variant="h4" color={loan > 0 ? 'error' : 'success'} fontWeight="bold">
+                                    ${loan.toLocaleString()}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                    Disponible: ${(creditLimit - loan).toLocaleString()}
+                                </Typography>
                             </Card>
 
                             {isMe ? (

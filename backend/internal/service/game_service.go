@@ -56,6 +56,102 @@ func (s *GameService) loadActiveGames() {
 	}
 }
 
+// ============ CREDIT SYSTEM HELPERS ============
+
+// initCreditProfile initializes a player's credit profile if nil
+func (s *GameService) initCreditProfile(p *domain.PlayerState) {
+	if p.Credit == nil {
+		p.Credit = &domain.CreditProfile{
+			Score:           700, // Start with "Good" credit
+			LoansTaken:      0,
+			LoansPaidOnTime: 0,
+			RoundsInDebt:    0,
+			LastLoanRound:   0,
+			CurrentRound:    0,
+		}
+	}
+}
+
+// calculateCreditScore recalculates a player's credit score based on various factors
+func (s *GameService) calculateCreditScore(game *domain.GameState, p *domain.PlayerState) int {
+	s.initCreditProfile(p)
+	score := 550 // Base score
+
+	// Factor 1: Loans Paid On Time (+30 each, max +150)
+	paidBonus := p.Credit.LoansPaidOnTime * 30
+	if paidBonus > 150 {
+		paidBonus = 150
+	}
+	score += paidBonus
+
+	// Factor 2: Delinquency (-50 per round in debt after 3)
+	if p.Credit.RoundsInDebt > 3 {
+		score -= (p.Credit.RoundsInDebt - 3) * 50
+	}
+
+	// Factor 3: Properties Owned (+5 each, max +50)
+	propsOwned := 0
+	for _, ownerID := range game.PropertyOwnership {
+		if ownerID == p.UserID {
+			propsOwned++
+		}
+	}
+	propBonus := propsOwned * 5
+	if propBonus > 50 {
+		propBonus = 50
+	}
+	score += propBonus
+
+	// Factor 4: High Debt Ratio (-20 if loan > 50% of balance+loan)
+	totalAssets := p.Balance + p.Loan
+	if totalAssets > 0 && p.Loan > totalAssets/2 {
+		score -= 20
+	}
+
+	// Clamp to valid range 300-850
+	if score < 300 {
+		score = 300
+	}
+	if score > 850 {
+		score = 850
+	}
+
+	p.Credit.Score = score
+	return score
+}
+
+// getInterestRate returns the interest rate based on credit score
+func (s *GameService) getInterestRate(score int) int {
+	switch {
+	case score >= 750:
+		return 5
+	case score >= 700:
+		return 10
+	case score >= 650:
+		return 15
+	case score >= 550:
+		return 25
+	default:
+		return 35
+	}
+}
+
+// getCreditLimit returns the max loan amount based on credit score
+func (s *GameService) getCreditLimit(score int) int {
+	switch {
+	case score >= 750:
+		return 8000
+	case score >= 700:
+		return 6000
+	case score >= 650:
+		return 4000
+	case score >= 550:
+		return 2000
+	default:
+		return 500
+	}
+}
+
 // ... existing code ...
 
 func (s *GameService) addLog(game *domain.GameState, message string, logType string) {
@@ -879,16 +975,27 @@ func (s *GameService) handleTakeLoan(game *domain.GameState, userID string, payl
 
 	for _, p := range game.Players {
 		if p.UserID == userID {
-			// Limit Check (Simple cap of 5000 for now)
-			if p.Loan+req.Amount > 5000 {
+			s.initCreditProfile(p)
+			s.calculateCreditScore(game, p)
+
+			// Dynamic Credit Limit based on score
+			creditLimit := s.getCreditLimit(p.Credit.Score)
+			if p.Loan+req.Amount > creditLimit {
+				s.addLog(game, p.Name+" no puede pedir más crédito (límite: $"+strconv.Itoa(creditLimit)+")", "ALERT")
 				return
 			}
-			p.Balance += int(req.Amount)
+
+			p.Balance += req.Amount
 			p.Loan += req.Amount
-			game.LastAction = p.Name + " tomó un préstamo de $" + strconv.Itoa(req.Amount)
+			p.Credit.LoansTaken++
+			p.Credit.LastLoanRound = p.Credit.CurrentRound
+
+			interestRate := s.getInterestRate(p.Credit.Score)
+			s.addLog(game, p.Name+" tomó préstamo de $"+strconv.Itoa(req.Amount)+" (Tasa: "+strconv.Itoa(interestRate)+"%)", "SUCCESS")
 			break
 		}
 	}
+	s.saveGame(game)
 	s.broadcastGameState(game)
 }
 
@@ -906,19 +1013,32 @@ func (s *GameService) handlePayLoan(game *domain.GameState, userID string, paylo
 
 	for _, p := range game.Players {
 		if p.UserID == userID {
+			s.initCreditProfile(p)
+
 			if p.Loan < req.Amount {
 				return // Cannot pay more than owed
 			}
-			if p.Balance < int(req.Amount) {
+			if p.Balance < req.Amount {
 				return // Insufficient funds
 			}
 
-			p.Balance -= int(req.Amount)
+			p.Balance -= req.Amount
 			p.Loan -= req.Amount
-			game.LastAction = p.Name + " pagó el préstamo: $" + strconv.Itoa(req.Amount)
+
+			// Check if paid "on time" (within 3 rounds of taking loan)
+			if p.Loan == 0 && (p.Credit.CurrentRound-p.Credit.LastLoanRound) <= 3 {
+				p.Credit.LoansPaidOnTime++
+				p.Credit.RoundsInDebt = 0
+				s.addLog(game, p.Name+" pagó préstamo a tiempo. ¡Mejora su crédito!", "SUCCESS")
+			} else {
+				s.addLog(game, p.Name+" pagó $"+strconv.Itoa(req.Amount)+" de su deuda", "SUCCESS")
+			}
+
+			s.calculateCreditScore(game, p)
 			break
 		}
 	}
+	s.saveGame(game)
 	s.broadcastGameState(game)
 }
 
@@ -970,6 +1090,56 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 		if newPos < oldPos { // If new position is less than old position, it means player passed GO
 			currentPlayer.Balance += 200
 			passGoMsg = " ¡Pasó por la SALIDA! Cobra $200."
+
+			// ===== CREDIT SYSTEM: Interest Accrual =====
+			s.initCreditProfile(currentPlayer)
+			currentPlayer.Credit.CurrentRound++
+
+			if currentPlayer.Loan > 0 {
+				currentPlayer.Credit.RoundsInDebt++
+				rate := s.getInterestRate(currentPlayer.Credit.Score)
+
+				// Add delinquency penalty after 3 rounds
+				if currentPlayer.Credit.RoundsInDebt > 3 {
+					rate += 10 // Extra 10% penalty
+				}
+
+				interest := (currentPlayer.Loan * rate) / 100
+
+				// ===== AUTOMATIC AMORTIZATION: 15% of principal =====
+				minimumPayment := currentPlayer.Loan * 15 / 100
+				if minimumPayment < 50 {
+					minimumPayment = 50 // Minimum $50 payment
+				}
+				if minimumPayment > currentPlayer.Loan {
+					minimumPayment = currentPlayer.Loan
+				}
+
+				totalDeduction := interest + minimumPayment
+
+				// Try to pay from balance (salary already added: +$200)
+				if currentPlayer.Balance >= totalDeduction {
+					currentPlayer.Balance -= totalDeduction
+					currentPlayer.Loan -= minimumPayment
+					passGoMsg += " Cuota: $" + strconv.Itoa(minimumPayment) + " + Int: $" + strconv.Itoa(interest) + "."
+
+					// If fully paid, reward credit
+					if currentPlayer.Loan <= 0 {
+						currentPlayer.Loan = 0
+						currentPlayer.Credit.LoansPaidOnTime++
+						currentPlayer.Credit.RoundsInDebt = 0
+						passGoMsg += " ¡Deuda saldada!"
+					}
+				} else {
+					// Can't afford minimum payment - just pay interest + whatever possible
+					currentPlayer.Balance -= interest
+					currentPlayer.Loan += interest   // Interest still accrues
+					currentPlayer.Credit.Score -= 25 // Penalty for missing minimum
+					passGoMsg += " ⚠️ No alcanzó cuota mínima ($" + strconv.Itoa(minimumPayment) + "). Score -25."
+				}
+
+				s.calculateCreditScore(game, currentPlayer)
+			}
 		}
 
 		// Check Tile
