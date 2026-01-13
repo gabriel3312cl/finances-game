@@ -12,8 +12,10 @@ import InventoryDrawer from './InventoryDrawer';
 import TradeModal from './TradeModal';
 import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
+import AdvisorChat from './AdvisorChat';
+import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
-import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person } from '@mui/icons-material';
+import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology } from '@mui/icons-material';
 
 export default function GameBoard() {
     // State from Store
@@ -83,6 +85,7 @@ export default function GameBoard() {
     // Local UI State
     const [isInventoryOpen, setIsInventoryOpen] = useState(false);
     const [isTradeOpen, setIsTradeOpen] = useState(false);
+    const [isAdvisorOpen, setIsAdvisorOpen] = useState(false);
     const [showHeatmap, setShowHeatmap] = useState(false);
     const [logHeight, setLogHeight] = useState(160);
     const [isDraggingLogs, setIsDraggingLogs] = useState(false);
@@ -542,9 +545,38 @@ export default function GameBoard() {
                 />
             )}
 
+            {/* AI Advisor Chat */}
+            <AdvisorChat
+                gameId={gameState.game_id}
+                token={getToken() || ''}
+                apiUrl={API_URL}
+                isOpen={isAdvisorOpen}
+                onClose={() => setIsAdvisorOpen(false)}
+            />
+
             {/* FABs */}
             <Box sx={{ position: 'fixed', bottom: logHeight + 20, right: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
                 <Stack direction="column" spacing={2}>
+                    <Tooltip title="Asesor IA" placement="left">
+                        <Box sx={{
+                            width: 56,
+                            height: 56,
+                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s',
+                            '&:hover': { transform: 'scale(1.1)' }
+                        }}
+                            onClick={() => setIsAdvisorOpen(true)}
+                        >
+                            <Psychology sx={{ color: 'white' }} />
+                        </Box>
+                    </Tooltip>
+
                     <Tooltip title="Comercio" placement="left">
                         <Box sx={{
                             width: 56,

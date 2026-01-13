@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	handler "github.com/gabriel3312cl/finances-game/backend/internal/handler/http"
 	"github.com/gabriel3312cl/finances-game/backend/internal/handler/websocket"
@@ -53,6 +54,13 @@ func main() {
 	// Game Service (In-memory + Persistence)
 	gameService := service.NewGameService(hub, db, gameRepo)
 
+	// Advisor Service (LLM Integration)
+	llmEndpoint := os.Getenv("LLM_ENDPOINT")
+	if llmEndpoint == "" {
+		llmEndpoint = "http://192.168.1.8:1234/v1/chat/completions"
+	}
+	advisorService := service.NewAdvisorService(gameService, llmEndpoint)
+
 	// Router
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +79,22 @@ func main() {
 	mux.HandleFunc("/games/join", handler.AuthMiddleware(userRepo, gameHandler.JoinGame))
 	mux.HandleFunc("/games/my", handler.AuthMiddleware(userRepo, gameHandler.GetMyGames))
 	mux.HandleFunc("/games/board", gameHandler.GetBoard) // public, or auth? Game board is generic. Public is fine.
+
+	// Advisor Routes
+	advisorHandler := handler.NewAdvisorHandler(advisorService)
+	mux.HandleFunc("/api/games/", handler.AuthMiddleware(userRepo, func(w http.ResponseWriter, r *http.Request) {
+		// Route: /api/games/{id}/advisor/stream for SSE streaming
+		if strings.HasSuffix(r.URL.Path, "advisor/stream") {
+			advisorHandler.ChatStream(w, r)
+			return
+		}
+		// Route: /api/games/{id}/advisor for regular chat
+		if strings.HasSuffix(r.URL.Path, "advisor") {
+			advisorHandler.Chat(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	}))
 
 	// WebSocket Route
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -96,14 +120,18 @@ func main() {
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Allow all for MVP
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 
+		// Handle preflight
 		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 
+		// Pass original ResponseWriter to preserve Flusher interface
 		next.ServeHTTP(w, r)
 	})
 }
