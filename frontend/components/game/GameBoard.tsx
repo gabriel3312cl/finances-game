@@ -199,7 +199,7 @@ export default function GameBoard() {
         setActionPending(true);
         sendMessage(action, payload);
         // Fallback timeout in case game state doesn't update properly
-        setTimeout(() => setActionPending(false), 3000);
+        setTimeout(() => setActionPending(false), 1000);
     };
 
     const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
@@ -557,18 +557,22 @@ export default function GameBoard() {
                     <Typography variant="caption" color="grey.500" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Registro de Eventos</Typography>
                 </Box>
                 <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
-                    {[...(gameState.logs || [])].reverse().map((log: any, i: number) => (
-                        <ListItem key={i} sx={{ py: 0, minHeight: 20 }}>
-                            <ListItemText
-                                primary={
-                                    <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type), lineHeight: 1.2 }}>
-                                        <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
-                                        {translateLog(log.message)}
-                                    </Typography>
-                                }
-                            />
-                        </ListItem>
-                    ))}
+                    {[...(gameState.logs || [])].reverse().flatMap((log: any, i: number) => {
+                        const message = translateLog(log.message);
+                        if (!message || !message.trim()) return [];
+                        return [(
+                            <ListItem key={i} sx={{ py: 0, minHeight: 20 }}>
+                                <ListItemText
+                                    primary={
+                                        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type), lineHeight: 1.2 }}>
+                                            <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
+                                            {translateLog(log.message)}
+                                        </Typography>
+                                    }
+                                />
+                            </ListItem>
+                        )];
+                    })}
                     {/* Auto-scroll removed since we are showing newest at top */}
                 </List>
             </Paper>
