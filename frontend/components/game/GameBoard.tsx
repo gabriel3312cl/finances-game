@@ -162,7 +162,7 @@ export default function GameBoard() {
         const currentPendingId = pendingRent?.property_id || null;
         if (currentPendingId && currentPendingId !== pendingRentRef.current) {
             pendingRentRef.current = currentPendingId;
-            setRentCountdown(5);
+            setRentCountdown(10);
         } else if (!currentPendingId) {
             pendingRentRef.current = null;
             setRentCountdown(0);
@@ -717,17 +717,17 @@ export default function GameBoard() {
                                 <Box sx={{
                                     width: 56,
                                     height: 56,
-                                    background: actionPending ? '#555' : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                                     borderRadius: '50%',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
-                                    cursor: actionPending ? 'not-allowed' : 'pointer',
+                                    cursor: 'pointer',
                                     transition: 'transform 0.2s',
-                                    '&:hover': { transform: actionPending ? 'none' : 'scale(1.1)' }
+                                    '&:hover': { transform: 'scale(1.1)' }
                                 }}
-                                    onClick={() => sendAction('ROLL_DICE', {})}
+                                    onClick={() => sendMessage('ROLL_DICE', {})}
                                 >
                                     <Casino sx={{ color: 'white' }} />
                                 </Box>
