@@ -15,7 +15,7 @@ import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
-import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology } from '@mui/icons-material';
+import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology, Stop, Style } from '@mui/icons-material';
 
 export default function GameBoard() {
     // State from Store
@@ -96,6 +96,7 @@ export default function GameBoard() {
     const [initialBalance, setInitialBalance] = useState(1500);
     const [rentCountdown, setRentCountdown] = useState(0);
     const pendingRentRef = useRef<string | null>(null);
+    const [actionPending, setActionPending] = useState(false);
 
     // ...
 
@@ -128,6 +129,18 @@ export default function GameBoard() {
     }, [rentCountdown]);
 
     // Derived States
+    // Reset actionPending when game state changes (action completed)
+    useEffect(() => {
+        setActionPending(false);
+    }, [gameState?.current_turn_id, gameState?.dice?.[0], gameState?.drawn_card?.id]);
+
+    // Idempotent action sender - prevents double-clicks
+    const sendAction = (action: string, payload: any = {}) => {
+        if (actionPending) return;
+        setActionPending(true);
+        sendMessage(action, payload);
+    };
+
     const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
     const isMyTurn = gameState?.current_turn_id === user?.user_id;
     const isGameActive = gameState?.status === 'ACTIVE';
@@ -453,12 +466,7 @@ export default function GameBoard() {
                             </Box>
                         )}
 
-                        {/* 1. Roll Dice (If my turn, game active, and haven't rolled) */}
-                        {isGameActive && isMyTurn && canRoll && (
-                            <Button variant="contained" color="success" size="large" onClick={() => sendMessage('ROLL_DICE', {})}>LANZAR DADOS</Button>
-                        )}
-
-                        {/* 2. Post-Roll Actions (Buy, Draw, etc) */}
+                        {/* Buy/Auction buttons - only shown when on purchasable unowned property */}
                         {isGameActive && isMyTurn && hasRolledAny && (() => {
                             const me = gameState.players.find((p: any) => p.user_id === user.user_id);
                             if (!me) return null;
@@ -469,29 +477,13 @@ export default function GameBoard() {
                             const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD' || tile.type === 'ATTRACTION' || tile.type === 'PARK';
 
                             const mustBuy = isUnowned && isPurchasable;
-                            const mustDraw = (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
+                            if (!mustBuy) return null;
 
-                            if (mustDraw) return <Button variant="contained" color="secondary" onClick={() => sendMessage('DRAW_CARD', {})}>SACAR TARJETA</Button>;
-
-                            if (mustBuy) return (
-                                <>
-                                    <Button variant="contained" color="info" disabled={(me.balance || 0) < (tile.price || 0)} onClick={() => sendMessage('BUY_PROPERTY', { property_id: propId })}>COMPRAR (${tile.price})</Button>
-                                    <Button variant="outlined" color="warning" onClick={() => sendMessage('START_AUCTION', { property_id: propId })}>SUBASTAR</Button>
-                                </>
-                            );
-
-                            // Can End Turn (with countdown if pending rent)
-                            const hasPendingRent = !!(gameState as any).pending_rent;
-                            const isWaitingForRent = hasPendingRent && rentCountdown > 0;
                             return (
-                                <Button
-                                    variant="outlined"
-                                    color="error"
-                                    disabled={isWaitingForRent}
-                                    onClick={() => sendMessage('END_TURN', {})}
-                                >
-                                    {isWaitingForRent ? `ESPERA (${rentCountdown}s)` : 'TERMINAR TURNO'}
-                                </Button>
+                                <>
+                                    <Button variant="contained" color="info" disabled={(me.balance || 0) < (tile.price || 0) || actionPending} onClick={() => sendAction('BUY_PROPERTY', { property_id: propId })}>COMPRAR (${tile.price})</Button>
+                                    <Button variant="outlined" color="warning" disabled={actionPending} onClick={() => sendAction('START_AUCTION', { property_id: propId })}>SUBASTAR</Button>
+                                </>
                             );
                         })()}
 
@@ -666,6 +658,122 @@ export default function GameBoard() {
                     </Tooltip>
                 </Stack>
             </Box>
+
+            {/* LEFT FABs - Game Actions */}
+            {isGameActive && isMyTurn && (
+                <Box sx={{ position: 'fixed', bottom: logHeight + 20, left: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
+                    <Stack direction="column" spacing={2}>
+                        {/* Roll Dice */}
+                        {canRoll && (
+                            <Tooltip title="Lanzar Dados" placement="right">
+                                <Box sx={{
+                                    width: 56,
+                                    height: 56,
+                                    background: actionPending ? '#555' : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
+                                    cursor: actionPending ? 'not-allowed' : 'pointer',
+                                    transition: 'transform 0.2s',
+                                    '&:hover': { transform: actionPending ? 'none' : 'scale(1.1)' }
+                                }}
+                                    onClick={() => sendAction('ROLL_DICE', {})}
+                                >
+                                    <Casino sx={{ color: 'white' }} />
+                                </Box>
+                            </Tooltip>
+                        )}
+
+                        {/* Draw Card */}
+                        {hasRolledAny && (() => {
+                            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                            if (!me) return null;
+                            const tile = gameState?.board?.[me.position];
+                            const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
+                            if (!mustDraw) return null;
+                            return (
+                                <Tooltip title="Sacar Tarjeta" placement="right">
+                                    <Box sx={{
+                                        width: 56,
+                                        height: 56,
+                                        background: actionPending ? '#555' : 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)',
+                                        cursor: actionPending ? 'not-allowed' : 'pointer',
+                                        transition: 'transform 0.2s',
+                                        '&:hover': { transform: actionPending ? 'none' : 'scale(1.1)' }
+                                    }}
+                                        onClick={() => sendAction('DRAW_CARD', {})}
+                                    >
+                                        <Style sx={{ color: 'white' }} />
+                                    </Box>
+                                </Tooltip>
+                            );
+                        })()}
+
+                        {/* End Turn */}
+                        {hasRolledAny && (() => {
+                            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                            if (!me) return null;
+                            const tile = gameState?.board?.[me.position];
+                            const propId = tile?.property_id;
+                            const isUnowned = propId && !gameState.property_ownership?.[propId];
+                            const isPurchasable = tile && ['PROPERTY', 'UTILITY', 'RAILROAD', 'ATTRACTION', 'PARK'].includes(tile.type);
+                            const mustBuy = isUnowned && isPurchasable;
+                            const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
+
+                            // Don't show if must buy or draw first
+                            if (mustBuy || mustDraw) return null;
+
+                            const hasPendingRent = !!(gameState as any).pending_rent;
+                            const isWaitingForRent = hasPendingRent && rentCountdown > 0;
+                            const isDisabled = isWaitingForRent || actionPending;
+
+                            return (
+                                <Tooltip title={isWaitingForRent ? `Espera ${rentCountdown}s` : "Terminar Turno"} placement="right">
+                                    <Box sx={{
+                                        width: 56,
+                                        height: 56,
+                                        background: isDisabled ? '#555' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: isDisabled ? 'none' : '0 4px 20px rgba(239, 68, 68, 0.4)',
+                                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                        transition: 'transform 0.2s',
+                                        '&:hover': { transform: isDisabled ? 'none' : 'scale(1.1)' },
+                                        position: 'relative'
+                                    }}
+                                        onClick={() => !isDisabled && sendAction('END_TURN', {})}
+                                    >
+                                        <Stop sx={{ color: 'white' }} />
+                                        {isWaitingForRent && (
+                                            <Typography sx={{
+                                                position: 'absolute',
+                                                bottom: -8,
+                                                fontSize: 10,
+                                                fontWeight: 'bold',
+                                                bgcolor: 'warning.main',
+                                                color: 'black',
+                                                px: 0.5,
+                                                borderRadius: 1
+                                            }}>
+                                                {rentCountdown}s
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                </Tooltip>
+                            );
+                        })()}
+                    </Stack>
+                </Box>
+            )}
         </Box >
     );
 }
