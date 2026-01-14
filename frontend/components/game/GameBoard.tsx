@@ -468,26 +468,6 @@ export default function GameBoard() {
                             </Box>
                         )}
 
-                        {/* Buy/Auction buttons - only shown when on purchasable unowned property */}
-                        {isGameActive && isMyTurn && hasRolledAny && (() => {
-                            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
-                            if (!me) return null;
-                            const tile = gameState?.board?.[me.position];
-                            if (!tile) return null;
-                            const propId = tile.property_id;
-                            const isUnowned = propId && !gameState.property_ownership?.[propId];
-                            const isPurchasable = tile.type === 'PROPERTY' || tile.type === 'UTILITY' || tile.type === 'RAILROAD' || tile.type === 'ATTRACTION' || tile.type === 'PARK';
-
-                            const mustBuy = isUnowned && isPurchasable;
-                            if (!mustBuy) return null;
-
-                            return (
-                                <>
-                                    <Button variant="contained" color="info" disabled={(me.balance || 0) < (tile.price || 0) || actionPending} onClick={() => sendAction('BUY_PROPERTY', { property_id: propId })}>COMPRAR (${tile.price})</Button>
-                                    <Button variant="outlined" color="warning" disabled={actionPending} onClick={() => sendAction('START_AUCTION', { property_id: propId })}>SUBASTAR</Button>
-                                </>
-                            );
-                        })()}
 
                     </Box>
                 </Box>
@@ -776,6 +756,59 @@ export default function GameBoard() {
                     </Stack>
                 </Box>
             )}
+
+            {/* CENTER FLOATING BAR - Buy/Auction */}
+            {isGameActive && isMyTurn && hasRolledAny && (() => {
+                const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                if (!me) return null;
+                const tile = gameState?.board?.[me.position];
+                if (!tile) return null;
+                const propId = tile.property_id;
+                const isUnowned = propId && !gameState.property_ownership?.[propId];
+                const isPurchasable = tile && ['PROPERTY', 'UTILITY', 'RAILROAD', 'ATTRACTION', 'PARK'].includes(tile.type);
+                const mustBuy = isUnowned && isPurchasable;
+
+                if (!mustBuy) return null;
+
+                return (
+                    <Box sx={{
+                        position: 'fixed',
+                        bottom: logHeight + 20,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 60,
+                        display: 'flex',
+                        gap: 2,
+                        p: 2,
+                        bgcolor: 'rgba(30, 41, 59, 0.95)',
+                        borderRadius: 3,
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        backdropFilter: 'blur(10px)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
+                    }}>
+                        <Button
+                            variant="contained"
+                            color="info"
+                            size="large"
+                            disabled={(me.balance || 0) < (tile.price || 0) || actionPending}
+                            onClick={() => sendAction('BUY_PROPERTY', { property_id: propId })}
+                            sx={{ fontWeight: 'bold', px: 3 }}
+                        >
+                            COMPRAR (${tile.price})
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="warning"
+                            size="large"
+                            disabled={actionPending}
+                            onClick={() => sendAction('START_AUCTION', { property_id: propId })}
+                            sx={{ fontWeight: 'bold', px: 3 }}
+                        >
+                            SUBASTAR
+                        </Button>
+                    </Box>
+                );
+            })()}
         </Box >
     );
 }
