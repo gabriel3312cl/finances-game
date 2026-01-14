@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Box, Modal, Typography } from '@mui/material';
 
 interface DiceModalProps {
@@ -124,6 +124,12 @@ export default function DiceModal({ open, onClose, dice }: DiceModalProps) {
     const [showTotal, setShowTotal] = useState(false);
     const total = dice[0] + dice[1];
 
+    // Check for onClose updates without resetting layout effect
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
     useEffect(() => {
         if (open) {
             setShowTotal(false);
@@ -134,7 +140,7 @@ export default function DiceModal({ open, onClose, dice }: DiceModalProps) {
 
             // Auto-close modal (2 seconds total)
             const closeTimer = setTimeout(() => {
-                onClose();
+                onCloseRef.current();
             }, 2000);
 
             return () => {
@@ -142,7 +148,7 @@ export default function DiceModal({ open, onClose, dice }: DiceModalProps) {
                 clearTimeout(closeTimer);
             };
         }
-    }, [open, onClose]);
+    }, [open]);
 
     return (
         <Modal
