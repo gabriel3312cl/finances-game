@@ -132,13 +132,15 @@ export default function GameBoard() {
     // Reset actionPending when game state changes (action completed)
     useEffect(() => {
         setActionPending(false);
-    }, [gameState?.current_turn_id, gameState?.dice?.[0], gameState?.drawn_card?.id]);
+    }, [gameState?.current_turn_id, gameState?.dice?.[0], gameState?.drawn_card?.id, gameState?.logs?.length]);
 
-    // Idempotent action sender - prevents double-clicks
+    // Idempotent action sender - prevents double-clicks, with timeout fallback
     const sendAction = (action: string, payload: any = {}) => {
         if (actionPending) return;
         setActionPending(true);
         sendMessage(action, payload);
+        // Fallback timeout in case game state doesn't update properly
+        setTimeout(() => setActionPending(false), 3000);
     };
 
     const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
