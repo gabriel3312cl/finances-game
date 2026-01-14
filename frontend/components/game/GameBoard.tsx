@@ -495,10 +495,6 @@ export default function GameBoard() {
                             );
                         })()}
 
-                        {/* 3. Pending Rent (If any) */}
-                        {(gameState as any).pending_rent && (gameState as any).pending_rent.creditor_id === user?.user_id && (
-                            <Button variant="contained" color="warning" onClick={() => sendMessage('COLLECT_RENT', {})}>COBRAR RENTA (${(gameState as any).pending_rent.amount})</Button>
-                        )}
                     </Box>
                 </Box>
             </Box>
