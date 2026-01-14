@@ -14,7 +14,7 @@ import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import { getToken, API_URL } from '@/lib/auth';
-import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack } from '@mui/material';
+import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology } from '@mui/icons-material';
 
 export default function GameBoard() {
@@ -93,6 +93,7 @@ export default function GameBoard() {
     const [hiddenCardId, setHiddenCardId] = useState<number | null>(null);
     const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
     const [minimapLayer, setMinimapLayer] = useState<'group' | 'owner' | 'globalHeatmap'>('group');
+    const [initialBalance, setInitialBalance] = useState(1500);
 
     // ...
 
@@ -220,7 +221,7 @@ export default function GameBoard() {
                     {/* Navigation Removed per user request */}
 
                     {/* Tiles Row */}
-                    <Box sx={{ display: 'flex', gap: 0, overflowX: 'auto', maxWidth: '100%', px: 4, pb: 2, alignItems: 'center', minHeight: 200 }}>
+                    <Box sx={{ display: 'flex', gap: 0, overflowX: 'auto', maxWidth: '100%', px: { xs: 0, sm: 1, md: 1 }, pb: 2, alignItems: 'center', minHeight: 200 }}>
                         {(() => {
                             const start = currentLane * 16;
                             const end = start + 16;
@@ -240,7 +241,7 @@ export default function GameBoard() {
                                 const tile: any = { ...staticTile, ...dynamicTile };
 
                                 return (
-                                    <Box key={i} sx={{ width: 130, height: 130 }}>
+                                    <Box key={i} sx={{ width: 130, height: 160 }}>
                                         <BoardTile
                                             tile={tile}
                                             index={i}
@@ -258,9 +259,10 @@ export default function GameBoard() {
 
                     {/* MINIMAP (Below Active Lane) */}
                     <Paper sx={{
-                        width: 240, height: 240,
+                        width: { xs: 180, sm: 200, md: 240 },
+                        height: { xs: 180, sm: 200, md: 240 },
                         bgcolor: '#1e293b', opacity: 0.95, border: '2px solid grey',
-                        display: { xs: 'none', md: 'grid' },
+                        display: 'grid',
                         gridTemplateColumns: 'repeat(17, 1fr)',
                         gridTemplateRows: 'repeat(17, 1fr)',
                         p: 0.5,
@@ -412,9 +414,20 @@ export default function GameBoard() {
 
                         {/* 0. Start Game (Host only, when WAITING and 2+ players) */}
                         {canStart && (
-                            <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', {})}>
-                                INICIAR JUEGO
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <TextField
+                                    label="Dinero Inicial"
+                                    type="number"
+                                    value={initialBalance}
+                                    onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
+                                    inputProps={{ min: 500, max: 10000, step: 100 }}
+                                    size="small"
+                                    sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
+                                />
+                                <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', { initial_balance: initialBalance })}>
+                                    INICIAR JUEGO
+                                </Button>
+                            </Box>
                         )}
 
                         {/* 1. Roll Dice (If my turn, game active, and haven't rolled) */}

@@ -450,7 +450,7 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		// Just broadcast state to ensure client has it
 		s.broadcastGameState(game)
 	case "START_GAME":
-		s.handleStartGame(game, userID)
+		s.handleStartGame(game, userID, action.Payload)
 	case "ROLL_ORDER":
 		s.handleRollOrder(game, userID)
 	case "ROLL_DICE":
@@ -1275,7 +1275,7 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 	s.broadcastGameState(game)
 }
 
-func (s *GameService) handleStartGame(game *domain.GameState, userID string) {
+func (s *GameService) handleStartGame(game *domain.GameState, userID string, payload json.RawMessage) {
 	// Only host can start
 	if game.Status != domain.GameStatusWaiting {
 		return
@@ -1288,11 +1288,25 @@ func (s *GameService) handleStartGame(game *domain.GameState, userID string) {
 		return
 	}
 
+	// Parse initial balance from payload (default 1500)
+	var req struct {
+		InitialBalance int `json:"initial_balance"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.InitialBalance <= 0 {
+		req.InitialBalance = 1500 // Default
+	}
+
+	// Apply initial balance to all players
+	for _, p := range game.Players {
+		p.Balance = req.InitialBalance
+	}
+
 	// Transition to ROLLING_ORDER phase
 	game.Status = domain.GameStatusRollingOrder
 	game.OrderRolls = make(map[string]int)
 	game.LastAction = "¡Fase de tirada para orden de turnos!"
 	s.addLog(game, "Cada jugador debe tirar los dados para determinar el orden de juego", "INFO")
+	s.addLog(game, "Dinero inicial: $"+strconv.Itoa(req.InitialBalance)+" para cada jugador", "INFO")
 	s.broadcastGameState(game)
 }
 
