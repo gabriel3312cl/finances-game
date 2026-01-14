@@ -13,6 +13,7 @@ import TradeModal from './TradeModal';
 import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
+import DiceModal from './DiceModal';
 import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology, Stop, Style } from '@mui/icons-material';
@@ -97,6 +98,7 @@ export default function GameBoard() {
     const [rentCountdown, setRentCountdown] = useState(0);
     const pendingRentRef = useRef<string | null>(null);
     const [actionPending, setActionPending] = useState(false);
+    const [diceModalOpen, setDiceModalOpen] = useState(false);
 
     // ...
 
@@ -133,6 +135,17 @@ export default function GameBoard() {
     useEffect(() => {
         setActionPending(false);
     }, [gameState?.current_turn_id, gameState?.dice?.[0], gameState?.drawn_card?.id, gameState?.logs?.length]);
+
+    // Trigger dice modal when dice values update (on roll)
+    const prevDiceRef = useRef<string | null>(null);
+    useEffect(() => {
+        const currentDice = JSON.stringify(gameState?.dice);
+        if (currentDice && currentDice !== prevDiceRef.current && gameState?.dice && gameState.dice[0] > 0) {
+            // Show modal when dice values change
+            setDiceModalOpen(true);
+        }
+        prevDiceRef.current = currentDice;
+    }, [gameState?.dice]);
 
     // Idempotent action sender - prevents double-clicks, with timeout fallback
     const sendAction = (action: string, payload: any = {}) => {
@@ -437,15 +450,8 @@ export default function GameBoard() {
                     </Paper>
                 </Box>
 
-                {/* DICE & ACTION PANEL (Bottom Overlay) */}
+                {/* ACTION PANEL (Bottom Overlay) */}
                 <Box sx={{ p: 2, bgcolor: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, borderTop: 1, borderColor: 'grey.700' }}>
-                    {/* Dice */}
-                    <Paper sx={{ p: 1, px: 3, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#334155' }}>
-                        <Typography variant="h6" color="white">DADOS:</Typography>
-                        {displayDice.map((d: number, i: number) => (
-                            <Box key={i} sx={{ width: 40, height: 40, bgcolor: 'white', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', borderRadius: 1, fontSize: 20 }}>{d}</Box>
-                        ))}
-                    </Paper>
 
                     {/* Action Buttons Logic */}
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -574,6 +580,13 @@ export default function GameBoard() {
                 apiUrl={API_URL}
                 isOpen={isAdvisorOpen}
                 onClose={() => setIsAdvisorOpen(false)}
+            />
+
+            {/* 3D Dice Animation Modal */}
+            <DiceModal
+                open={diceModalOpen}
+                onClose={() => setDiceModalOpen(false)}
+                dice={displayDice as [number, number]}
             />
 
             {/* FABs */}
