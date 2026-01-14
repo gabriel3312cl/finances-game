@@ -94,6 +94,8 @@ export default function GameBoard() {
     const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
     const [minimapLayer, setMinimapLayer] = useState<'group' | 'owner' | 'globalHeatmap'>('group');
     const [initialBalance, setInitialBalance] = useState(1500);
+    const [rentCountdown, setRentCountdown] = useState(0);
+    const pendingRentRef = useRef<string | null>(null);
 
     // ...
 
@@ -103,6 +105,27 @@ export default function GameBoard() {
     useEffect(() => {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [gameState?.logs]);
+
+    // Rent Collection Countdown Timer
+    const pendingRent = (gameState as any)?.pending_rent;
+    useEffect(() => {
+        // Start countdown when new pending_rent appears
+        const currentPendingId = pendingRent?.property_id || null;
+        if (currentPendingId && currentPendingId !== pendingRentRef.current) {
+            pendingRentRef.current = currentPendingId;
+            setRentCountdown(5);
+        } else if (!currentPendingId) {
+            pendingRentRef.current = null;
+            setRentCountdown(0);
+        }
+    }, [pendingRent?.property_id]);
+
+    useEffect(() => {
+        if (rentCountdown > 0) {
+            const timer = setTimeout(() => setRentCountdown(rentCountdown - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [rentCountdown]);
 
     // Derived States
     const isHost = gameState?.players?.[0]?.user_id === user?.user_id; // Simple Host Assumption
@@ -457,8 +480,19 @@ export default function GameBoard() {
                                 </>
                             );
 
-                            // Can End Turn
-                            return <Button variant="outlined" color="error" onClick={() => sendMessage('END_TURN', {})}>TERMINAR TURNO</Button>;
+                            // Can End Turn (with countdown if pending rent)
+                            const hasPendingRent = !!(gameState as any).pending_rent;
+                            const isWaitingForRent = hasPendingRent && rentCountdown > 0;
+                            return (
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    disabled={isWaitingForRent}
+                                    onClick={() => sendMessage('END_TURN', {})}
+                                >
+                                    {isWaitingForRent ? `ESPERA (${rentCountdown}s)` : 'TERMINAR TURNO'}
+                                </Button>
+                            );
                         })()}
 
                         {/* 3. Pending Rent (If any) */}
