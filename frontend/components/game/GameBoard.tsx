@@ -99,6 +99,52 @@ export default function GameBoard() {
     const pendingRentRef = useRef<string | null>(null);
     const [actionPending, setActionPending] = useState(false);
     const [diceModalOpen, setDiceModalOpen] = useState(false);
+    const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
+    const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Animate token movement when dice modal closes
+    const handleDiceModalClose = () => {
+        setDiceModalOpen(false);
+
+        // Get the current player's final position and previous position
+        const currentPlayer = gameState?.players?.find((p: any) => p.user_id === gameState?.current_turn_id);
+        if (!currentPlayer) return;
+
+        const finalPosition = currentPlayer.position;
+        const diceTotal = (gameState?.dice?.[0] || 0) + (gameState?.dice?.[1] || 0);
+        const startPosition = (finalPosition - diceTotal + 64) % 64;
+
+        // Start animation from the start position
+        let currentPos = startPosition;
+        setAnimatedPositions(prev => ({ ...prev, [currentPlayer.user_id]: currentPos }));
+
+        // Clear any existing animation
+        if (animationIntervalRef.current) {
+            clearInterval(animationIntervalRef.current);
+        }
+
+        // Step through each position with 150ms delay
+        animationIntervalRef.current = setInterval(() => {
+            currentPos = (currentPos + 1) % 64;
+            setAnimatedPositions(prev => ({ ...prev, [currentPlayer.user_id]: currentPos }));
+
+            // Stop when we reach final position
+            if (currentPos === finalPosition) {
+                if (animationIntervalRef.current) {
+                    clearInterval(animationIntervalRef.current);
+                    animationIntervalRef.current = null;
+                }
+                // Clear animated position after animation ends
+                setTimeout(() => {
+                    setAnimatedPositions(prev => {
+                        const updated = { ...prev };
+                        delete updated[currentPlayer.user_id];
+                        return updated;
+                    });
+                }, 100);
+            }
+        }, 150);
+    };
 
     // ...
 
@@ -297,7 +343,11 @@ export default function GameBoard() {
                                             tile={tile}
                                             index={i}
                                             onClick={() => setSelectedTile(tile)}
-                                            players={gameState.players?.filter((p: any) => p.position === i)}
+                                            players={gameState.players?.filter((p: any) => {
+                                                // Use animated position if available, otherwise use actual position
+                                                const displayPos = animatedPositions[p.user_id] !== undefined ? animatedPositions[p.user_id] : p.position;
+                                                return displayPos === i;
+                                            })}
                                             fontScale={0.7}
                                             forceTopBar={true}
                                             ownerColor={tile.property_id || tile.propertyId ? getOwnerColor(gameState, tile.property_id || tile.propertyId) : undefined}
@@ -405,8 +455,11 @@ export default function GameBoard() {
 
                                 if (!tile) return <Box key={`empty-${i}`} sx={{ bgcolor: 'transparent' }} />;
 
-                                // Check if player is here
-                                const playerHere = gameState.players.find((p: any) => p.position === tile.id);
+                                // Check if player is here (use animated position if available)
+                                const playerHere = gameState.players.find((p: any) => {
+                                    const displayPos = animatedPositions[p.user_id] !== undefined ? animatedPositions[p.user_id] : p.position;
+                                    return displayPos === tile.id;
+                                });
 
                                 // Determine Cell Color based on Layer
                                 let cellColor = '#94a3b8'; // Default grey
@@ -585,7 +638,7 @@ export default function GameBoard() {
             {/* 3D Dice Animation Modal */}
             <DiceModal
                 open={diceModalOpen}
-                onClose={() => setDiceModalOpen(false)}
+                onClose={handleDiceModalClose}
                 dice={displayDice as [number, number]}
             />
 

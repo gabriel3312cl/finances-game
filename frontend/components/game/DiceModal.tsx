@@ -73,15 +73,15 @@ function Dice3D({ finalValue, delay = 0 }: { finalValue: number; delay?: number 
     useEffect(() => {
         // Start with random spinning
         setIsRolling(true);
-        setRotation({ x: Math.random() * 720 + 360, y: Math.random() * 720 + 360 });
+        setRotation({ x: Math.random() * 360 + 180, y: Math.random() * 360 + 180 });
 
-        // After animation, settle on final value
+        // After animation, settle on final value (faster)
         const timer = setTimeout(() => {
             setIsRolling(false);
             const final = getFinalRotation(finalValue);
             // Add extra full rotations for dramatic effect
-            setRotation({ x: final.x + 720, y: final.y + 720 });
-        }, 1500 + delay);
+            setRotation({ x: final.x + 360, y: final.y + 360 });
+        }, 600 + delay);
 
         return () => clearTimeout(timer);
     }, [finalValue, delay]);
@@ -100,8 +100,8 @@ function Dice3D({ finalValue, delay = 0 }: { finalValue: number; delay?: number 
                 transformStyle: 'preserve-3d',
                 transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)`,
                 transition: isRolling
-                    ? 'transform 1.5s cubic-bezier(0.17, 0.67, 0.12, 0.99)'
-                    : 'transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    ? 'transform 0.6s cubic-bezier(0.17, 0.67, 0.12, 0.99)'
+                    : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
             }}>
                 {/* Front - 1 */}
                 <DiceFace value={1} transform="translateZ(40px)" />
@@ -127,15 +127,15 @@ export default function DiceModal({ open, onClose, dice }: DiceModalProps) {
     useEffect(() => {
         if (open) {
             setShowTotal(false);
-            // Show total after dice settle
+            // Show total after dice settle (faster)
             const timer = setTimeout(() => {
                 setShowTotal(true);
-            }, 2500);
+            }, 1200);
 
-            // Auto-close modal
+            // Auto-close modal (2 seconds total)
             const closeTimer = setTimeout(() => {
                 onClose();
-            }, 4000);
+            }, 2000);
 
             return () => {
                 clearTimeout(timer);
