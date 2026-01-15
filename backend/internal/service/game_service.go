@@ -589,9 +589,17 @@ func (s *GameService) handleAddBot(game *domain.GameState, userID string, payloa
 		}
 	}
 
+	funNames := []string{
+		"El Tío Richie", "Don Billetes", "IA-fortunado", "El Lobo de Wall Street",
+		"Algoritmo Avaricioso", "Byte de Oro", "Millonario en Bit", "Sr. Monopolio",
+		"Doña Hipoteca", "El Magnate de Silicio", "Billetera Fría", "Interés Compuesto",
+		"Calculadora Humana", "Sr. Dividendos", "El Inflacionario",
+	}
+	randomName := funNames[rand.Intn(len(funNames))]
+
 	game.Players = append(game.Players, &domain.PlayerState{
 		UserID:           botID,
-		Name:             "[BOT] " + profile.Name,
+		Name:             "[BOT] " + randomName + " (" + profile.Name + ")",
 		Balance:          1500,
 		Position:         0,
 		TokenColor:       assignedColor,
