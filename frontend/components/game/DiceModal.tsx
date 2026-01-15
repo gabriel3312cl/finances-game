@@ -58,15 +58,18 @@ function Dice3D({ finalValue, delay = 0 }: { finalValue: number; delay?: number 
     const [rotation, setRotation] = useState({ x: 0, y: 0 });
 
     // Calculate final rotation based on target value
-    // The cube faces are: Front=1, Back=6, Right=2, Left=5, Top=3, Bottom=4
+    // CSS 3D cube: rotateX positive = top moves toward viewer
+    //              rotateY positive = left side moves toward viewer
+    // Face positions: Front=1 (z+), Back=6 (z-), Right=2 (x+), Left=5 (x-), Top=3 (y-), Bottom=4 (y+)
     const getFinalRotation = (value: number) => {
+        // To show a face, we need to rotate the cube so that face points toward the viewer (z+)
         const rotations: Record<number, { x: number; y: number }> = {
-            1: { x: 0, y: 0 },       // Front face (1) facing viewer
-            6: { x: 0, y: 180 },     // Back face (6) rotated to front
-            2: { x: 0, y: -90 },     // Right face (2) rotated to front
-            5: { x: 0, y: 90 },      // Left face (5) rotated to front
-            3: { x: 90, y: 0 },      // Top face (3) rotated to front
-            4: { x: -90, y: 0 },     // Bottom face (4) rotated to front
+            1: { x: 0, y: 0 },         // Front face already facing viewer
+            2: { x: 0, y: -90 },       // Rotate left to show right face
+            3: { x: -90, y: 0 },       // Rotate down to show top face
+            4: { x: 90, y: 0 },        // Rotate up to show bottom face
+            5: { x: 0, y: 90 },        // Rotate right to show left face
+            6: { x: 180, y: 0 },       // Flip to show back face
         };
         return rotations[value] || { x: 0, y: 0 };
     };
@@ -74,14 +77,15 @@ function Dice3D({ finalValue, delay = 0 }: { finalValue: number; delay?: number 
     useEffect(() => {
         // Start with random spinning
         setIsRolling(true);
-        setRotation({ x: Math.random() * 360 + 180, y: Math.random() * 360 + 180 });
+        const randomX = Math.floor(Math.random() * 4) * 90 + 45; // Random starting rotation
+        const randomY = Math.floor(Math.random() * 4) * 90 + 45;
+        setRotation({ x: randomX, y: randomY });
 
-        // After animation, settle on final value (faster)
+        // After animation, settle on final value
         const timer = setTimeout(() => {
             setIsRolling(false);
             const final = getFinalRotation(finalValue);
-            // Add extra full rotations for dramatic effect
-            setRotation({ x: final.x + 360, y: final.y + 360 });
+            setRotation(final);
         }, 600 + delay);
 
         return () => clearTimeout(timer);

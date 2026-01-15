@@ -781,14 +781,7 @@ export default function GameBoard() {
                 dice={displayDice as [number, number]}
             />
 
-            {/* Game Chat */}
-            <GameChat
-                messages={(gameState as any).chat_messages || []}
-                onSend={(message) => sendMessage('SEND_CHAT', { message })}
-                currentUserId={user.user_id}
-            />
-
-            {/* FABs */}
+            {/* FABs - Right Side */}
             <Box sx={{ position: 'fixed', bottom: logHeight + 20, right: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
                 <Stack direction="column" spacing={2}>
                     <Tooltip title="Asesor IA" placement="left">
@@ -853,149 +846,166 @@ export default function GameBoard() {
                 </Stack>
             </Box>
 
-            {/* LEFT FABs - Game Actions */}
-            {isGameActive && isMyTurn && (
-                <Box sx={{ position: 'fixed', bottom: logHeight + 20, left: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
-                    <Stack direction="column" spacing={2}>
-                        {/* Roll Dice */}
-                        {canRoll && (
-                            <Tooltip title="Lanzar Dados" placement="right">
-                                <Box sx={{
-                                    width: 56,
-                                    height: 56,
-                                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s',
-                                    '&:hover': { transform: 'scale(1.1)' }
-                                }}
-                                    onClick={() => sendMessage('ROLL_DICE', {})}
-                                >
-                                    <Casino sx={{ color: 'white' }} />
-                                </Box>
-                            </Tooltip>
-                        )}
+            {/* LEFT FABs - Chat & Game Actions */}
+            <Box sx={{ position: 'fixed', bottom: logHeight + 20, left: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
+                <Stack direction="column" spacing={2}>
+                    {/* Game Chat - Always at the top */}
+                    <GameChat
+                        messages={(gameState as any).chat_messages || []}
+                        players={(gameState?.players || []).map((p: any) => ({
+                            user_id: p.user_id,
+                            name: p.name,
+                            token_color: p.token_color,
+                            is_bot: p.is_bot || false
+                        }))}
+                        onSend={(message) => sendMessage('SEND_CHAT', { message })}
+                        currentUserId={user.user_id}
+                        logHeight={logHeight}
+                    />
 
-                        {/* Declare Bankruptcy Button - Only if Balance negative */}
-                        {isGameActive && (myPlayer?.balance || 0) < 0 && (
-                            <Tooltip title="Declarar Bancarrota" placement="right">
-                                <Box sx={{
-                                    width: 56,
-                                    height: 56,
-                                    background: 'linear-gradient(135deg, #000 0%, #333 100%)',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    boxShadow: '0 4px 20px rgba(0,0,0, 0.7)',
-                                    cursor: 'pointer',
-                                    border: '2px solid red',
-                                    transition: 'transform 0.2s',
-                                    '&:hover': { transform: 'scale(1.1)' }
-                                }}
-                                    onClick={() => {
-                                        if (window.confirm("¿Estás seguro de declarar BANCARROTA? Perderás todo y saldrás del juego.")) {
-                                            sendMessage('DECLARE_BANKRUPTCY', {});
-                                        }
-                                    }}
-                                >
-                                    <Stop sx={{ color: 'red' }} />
-                                </Box>
-                            </Tooltip>
-                        )}
-
-                        {/* Draw Card */}
-                        {hasRolledAny && (() => {
-                            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
-                            if (!me) return null;
-                            const tile = gameState?.board?.[me.position];
-                            const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
-                            if (!mustDraw) return null;
-                            return (
-                                <Tooltip title="Sacar Tarjeta" placement="right">
+                    {/* Game Actions - Only on my turn */}
+                    {isGameActive && isMyTurn && (
+                        <>
+                            {/* Roll Dice */}
+                            {canRoll && (
+                                <Tooltip title="Lanzar Dados" placement="right">
                                     <Box sx={{
                                         width: 56,
                                         height: 56,
-                                        background: actionPending ? '#555' : 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                        background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                                         borderRadius: '50%',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)',
-                                        cursor: actionPending ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
+                                        cursor: 'pointer',
                                         transition: 'transform 0.2s',
-                                        '&:hover': { transform: actionPending ? 'none' : 'scale(1.1)' }
+                                        '&:hover': { transform: 'scale(1.1)' }
                                     }}
-                                        onClick={() => sendAction('DRAW_CARD', {})}
+                                        onClick={() => sendMessage('ROLL_DICE', {})}
                                     >
-                                        <Style sx={{ color: 'white' }} />
+                                        <Casino sx={{ color: 'white' }} />
                                     </Box>
                                 </Tooltip>
-                            );
-                        })()}
+                            )}
 
-                        {/* End Turn */}
-                        {hasRolledAny && (() => {
-                            const me = gameState.players.find((p: any) => p.user_id === user.user_id);
-                            if (!me) return null;
-                            const tile = gameState?.board?.[me.position];
-                            const propId = tile?.property_id;
-                            const isUnowned = propId && !gameState.property_ownership?.[propId];
-                            const isPurchasable = tile && ['PROPERTY', 'UTILITY', 'RAILROAD', 'ATTRACTION', 'PARK'].includes(tile.type);
-                            const mustBuy = isUnowned && isPurchasable;
-                            const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
-
-                            // Don't show if must buy or draw first
-                            if (mustBuy || mustDraw) return null;
-
-                            const pendingRent = (gameState as any)?.pending_rent;
-                            const isBlockedByRent = pendingRent && pendingRent.target_id === user.user_id;
-                            const isDisabled = isBlockedByRent || actionPending;
-
-                            return (
-                                <Tooltip title={isBlockedByRent ? "Espera a que te cobren la renta" : "Terminar Turno"} placement="right">
+                            {/* Declare Bankruptcy Button - Only if Balance negative */}
+                            {isGameActive && (myPlayer?.balance || 0) < 0 && (
+                                <Tooltip title="Declarar Bancarrota" placement="right">
                                     <Box sx={{
                                         width: 56,
                                         height: 56,
-                                        background: isDisabled ? '#555' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                        background: 'linear-gradient(135deg, #000 0%, #333 100%)',
                                         borderRadius: '50%',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        boxShadow: isDisabled ? 'none' : '0 4px 20px rgba(239, 68, 68, 0.4)',
-                                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 4px 20px rgba(0,0,0, 0.7)',
+                                        cursor: 'pointer',
+                                        border: '2px solid red',
                                         transition: 'transform 0.2s',
-                                        '&:hover': { transform: isDisabled ? 'none' : 'scale(1.1)' },
-                                        position: 'relative'
+                                        '&:hover': { transform: 'scale(1.1)' }
                                     }}
-                                        onClick={() => !isDisabled && sendAction('END_TURN', {})}
+                                        onClick={() => {
+                                            if (window.confirm("¿Estás seguro de declarar BANCARROTA? Perderás todo y saldrás del juego.")) {
+                                                sendMessage('DECLARE_BANKRUPTCY', {});
+                                            }
+                                        }}
                                     >
-                                        <Stop sx={{ color: 'white' }} />
-                                        {isBlockedByRent && (
-                                            <Typography sx={{
-                                                position: 'absolute',
-                                                bottom: -8,
-                                                fontSize: 14,
-                                                fontWeight: 'bold',
-                                                bgcolor: 'warning.main',
-                                                color: 'black',
-                                                px: 0.5,
-                                                borderRadius: 1
-                                            }}>
-                                                💰
-                                            </Typography>
-                                        )}
+                                        <Stop sx={{ color: 'red' }} />
                                     </Box>
                                 </Tooltip>
-                            );
-                        })()}
-                    </Stack>
-                </Box>
-            )}
+                            )}
+
+                            {/* Draw Card */}
+                            {hasRolledAny && (() => {
+                                const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                                if (!me) return null;
+                                const tile = gameState?.board?.[me.position];
+                                const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
+                                if (!mustDraw) return null;
+                                return (
+                                    <Tooltip title="Sacar Tarjeta" placement="right">
+                                        <Box sx={{
+                                            width: 56,
+                                            height: 56,
+                                            background: actionPending ? '#555' : 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)',
+                                            cursor: actionPending ? 'not-allowed' : 'pointer',
+                                            transition: 'transform 0.2s',
+                                            '&:hover': { transform: actionPending ? 'none' : 'scale(1.1)' }
+                                        }}
+                                            onClick={() => sendAction('DRAW_CARD', {})}
+                                        >
+                                            <Style sx={{ color: 'white' }} />
+                                        </Box>
+                                    </Tooltip>
+                                );
+                            })()}
+
+                            {/* End Turn */}
+                            {hasRolledAny && (() => {
+                                const me = gameState.players.find((p: any) => p.user_id === user.user_id);
+                                if (!me) return null;
+                                const tile = gameState?.board?.[me.position];
+                                const propId = tile?.property_id;
+                                const isUnowned = propId && !gameState.property_ownership?.[propId];
+                                const isPurchasable = tile && ['PROPERTY', 'UTILITY', 'RAILROAD', 'ATTRACTION', 'PARK'].includes(tile.type);
+                                const mustBuy = isUnowned && isPurchasable;
+                                const mustDraw = tile && (tile.type === 'CHANCE' || tile.type === 'COMMUNITY') && !gameState.drawn_card;
+
+                                // Don't show if must buy or draw first
+                                if (mustBuy || mustDraw) return null;
+
+                                const pendingRent = (gameState as any)?.pending_rent;
+                                const isBlockedByRent = pendingRent && pendingRent.target_id === user.user_id;
+                                const isDisabled = isBlockedByRent || actionPending;
+
+                                return (
+                                    <Tooltip title={isBlockedByRent ? "Espera a que te cobren la renta" : "Terminar Turno"} placement="right">
+                                        <Box sx={{
+                                            width: 56,
+                                            height: 56,
+                                            background: isDisabled ? '#555' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            boxShadow: isDisabled ? 'none' : '0 4px 20px rgba(239, 68, 68, 0.4)',
+                                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                            transition: 'transform 0.2s',
+                                            '&:hover': { transform: isDisabled ? 'none' : 'scale(1.1)' },
+                                            position: 'relative'
+                                        }}
+                                            onClick={() => !isDisabled && sendAction('END_TURN', {})}
+                                        >
+                                            <Stop sx={{ color: 'white' }} />
+                                            {isBlockedByRent && (
+                                                <Typography sx={{
+                                                    position: 'absolute',
+                                                    bottom: -8,
+                                                    fontSize: 14,
+                                                    fontWeight: 'bold',
+                                                    bgcolor: 'warning.main',
+                                                    color: 'black',
+                                                    px: 0.5,
+                                                    borderRadius: 1
+                                                }}>
+                                                    💰
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </Tooltip>
+                                );
+                            })()}
+                        </>
+                    )}
+                </Stack>
+            </Box>
 
             {/* CENTER FLOATING BAR - Buy/Auction */}
             {isGameActive && isMyTurn && hasRolledAny && (() => {

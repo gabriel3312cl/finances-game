@@ -1856,6 +1856,62 @@ func (s *GameService) checkBotTurn(game *domain.GameState) {
 		return
 	}
 
+	// 1.7 Check for ACTIVE TRADE where target is a bot
+	s.mu.RLock()
+	hasActiveTrade := game.ActiveTrade != nil
+	var targetBot *domain.PlayerState
+	if hasActiveTrade {
+		for _, p := range game.Players {
+			if p.IsBot && p.UserID == game.ActiveTrade.TargetID {
+				targetBot = p
+				break
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if targetBot != nil {
+		go func() {
+			time.Sleep(2 * time.Second) // Delay for "thinking"
+
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			// Re-fetch game safely
+			g, ok := s.games[gameID]
+			if !ok || g.ActiveTrade == nil || g.ActiveTrade.TargetID != targetBot.UserID {
+				return
+			}
+
+			trade := g.ActiveTrade
+
+			// Simple decision: Accept if they're offering more value than requesting
+			offerValue := trade.OfferCash
+			requestValue := trade.RequestCash
+
+			// Add property value estimates (rough: $200 per property)
+			offerValue += len(trade.OfferPropeties) * 200
+			requestValue += len(trade.RequestProperties) * 200
+
+			// Bot personality affects decision
+			profile := domain.GetBotProfile(targetBot.BotPersonalityID)
+			agreeable := profile.NegotiationSkill > 0.5 || profile.RiskTolerance > 0.6
+
+			// Accept if offer is better or bot is agreeable and it's close
+			threshold := int(float64(requestValue) * 0.8)
+			if offerValue > requestValue || (agreeable && offerValue >= threshold) {
+				log.Printf("Bot %s accepting trade from %s", targetBot.Name, trade.OffererName)
+				s.addBotThought(g, targetBot, fmt.Sprintf("✅ Acepto el trato de %s - me conviene", trade.OffererName))
+				s.handleAcceptTrade(g, targetBot.UserID, nil)
+			} else {
+				log.Printf("Bot %s rejecting trade from %s", targetBot.Name, trade.OffererName)
+				s.addBotThought(g, targetBot, fmt.Sprintf("❌ Rechazo el trato de %s - no me conviene", trade.OffererName))
+				s.handleRejectTrade(g, targetBot.UserID, nil)
+			}
+		}()
+		return
+	}
+
 	// 2. Normal Turn Logic
 	s.mu.RLock()
 	currentPlayerID := game.CurrentTurnID
