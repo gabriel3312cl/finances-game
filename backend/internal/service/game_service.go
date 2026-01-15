@@ -606,6 +606,8 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleAddBot(game, userID, action.Payload)
 	case "DECLARE_BANKRUPTCY":
 		s.handleDeclareBankruptcy(game, userID)
+	case "PAY_BAIL":
+		s.handlePayBail(game, userID)
 	case "UPDATE_PLAYER_CONFIG":
 		s.handleUpdatePlayerConfig(game, userID, action.Payload)
 	case "SEND_CHAT":
@@ -674,6 +676,8 @@ func (s *GameService) handleAddBot(game *domain.GameState, userID string, payloa
 	}
 	var req struct {
 		PersonalityID string `json:"personality_id"`
+		TokenColor    string `json:"token_color"`
+		TokenShape    string `json:"token_shape"`
 	}
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return
@@ -691,19 +695,30 @@ func (s *GameService) handleAddBot(game *domain.GameState, userID string, payloa
 	profile := domain.GetBotProfile(req.PersonalityID)
 	botID := "BOT_" + generateGameCode()
 
-	// Pick color logic (simplified copy)
-	colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
-	assignedColor := "GRAY"
+	// Extended color palette (16 colors) - pick random unused one
+	colors := []string{
+		"#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#03a9f4",
+		"#00bcd4", "#009688", "#4caf50", "#8bc34a", "#cddc39", "#ffeb3b",
+		"#ffc107", "#ff9800", "#ff5722", "#795548",
+	}
+	// Shuffle colors for randomness
+	rand.Shuffle(len(colors), func(i, j int) { colors[i], colors[j] = colors[j], colors[i] })
+
 	usedColors := make(map[string]bool)
 	for _, p := range game.Players {
 		usedColors[p.TokenColor] = true
 	}
+	assignedColor := "#9c27b0" // Fallback
 	for _, c := range colors {
 		if !usedColors[c] {
 			assignedColor = c
 			break
 		}
 	}
+
+	// Random shape
+	shapes := []string{"CUBE", "PYRAMID", "CYLINDER", "STAR"}
+	assignedShape := shapes[rand.Intn(len(shapes))]
 
 	funNames := []string{
 		"El Tío Richie", "Don Billetes", "IA-fortunado", "El Lobo de Wall Street",
@@ -719,6 +734,7 @@ func (s *GameService) handleAddBot(game *domain.GameState, userID string, payloa
 		Balance:          1500,
 		Position:         0,
 		TokenColor:       assignedColor,
+		TokenShape:       assignedShape,
 		IsActive:         true,
 		IsBot:            true,
 		BotPersonalityID: req.PersonalityID,
@@ -1343,8 +1359,9 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 	d2 := rand.Intn(6) + 1
 	game.Dice = [2]int{d1, d2}
 	total := d1 + d2
+	isDoubles := d1 == d2
 
-	// 3. Move Player
+	// 3. Find Player
 	var currentPlayer *domain.PlayerState
 	for _, p := range game.Players {
 		if p.UserID == userID {
@@ -1353,145 +1370,222 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 		}
 	}
 
-	if currentPlayer != nil {
-		oldPos := currentPlayer.Position
-		newPos := (currentPlayer.Position + total) % 64
-		currentPlayer.Position = newPos
-
-		// Track Visits
-		s.trackTileVisit(game, currentPlayer, newPos)
-
-		// Check Pass Go
-		var passGoMsg string
-		if newPos < oldPos { // If new position is less than old position, it means player passed GO
-			currentPlayer.Balance += 200
-			passGoMsg = " ¡Pasó por la SALIDA! Cobra $200."
-
-			// ===== CREDIT SYSTEM: Interest Accrual =====
-			s.initCreditProfile(currentPlayer)
-			currentPlayer.Credit.CurrentRound++
-
-			if currentPlayer.Loan > 0 {
-				currentPlayer.Credit.RoundsInDebt++
-				rate := s.getInterestRate(currentPlayer.Credit.Score)
-
-				// Add delinquency penalty after 3 rounds
-				if currentPlayer.Credit.RoundsInDebt > 3 {
-					rate += 10 // Extra 10% penalty
-				}
-
-				interest := (currentPlayer.Loan * rate) / 100
-
-				// ===== AUTOMATIC AMORTIZATION: 15% of principal =====
-				minimumPayment := currentPlayer.Loan * 15 / 100
-				if minimumPayment < 50 {
-					minimumPayment = 50 // Minimum $50 payment
-				}
-				if minimumPayment > currentPlayer.Loan {
-					minimumPayment = currentPlayer.Loan
-				}
-
-				totalDeduction := interest + minimumPayment
-
-				// Try to pay from balance (salary already added: +$200)
-				if currentPlayer.Balance >= totalDeduction {
-					currentPlayer.Balance -= totalDeduction
-					currentPlayer.Loan -= minimumPayment
-					passGoMsg += " Cuota: $" + strconv.Itoa(minimumPayment) + " + Int: $" + strconv.Itoa(interest) + "."
-
-					// If fully paid, reward credit
-					if currentPlayer.Loan <= 0 {
-						currentPlayer.Loan = 0
-						currentPlayer.Credit.LoansPaidOnTime++
-						currentPlayer.Credit.RoundsInDebt = 0
-						passGoMsg += " ¡Deuda saldada!"
-					}
-				} else {
-					// Can't afford minimum payment - just pay interest + whatever possible
-					currentPlayer.Balance -= interest
-					currentPlayer.Loan += interest   // Interest still accrues
-					currentPlayer.Credit.Score -= 25 // Penalty for missing minimum
-					passGoMsg += " ⚠️ No alcanzó cuota mínima ($" + strconv.Itoa(minimumPayment) + "). Score -25."
-				}
-
-				s.calculateCreditScore(game, currentPlayer)
-			}
-		}
-
-		// Check Tile
-		// 4. Update Log with result
-		desc := currentPlayer.Name + " lanzó " + strconv.Itoa(total) + passGoMsg // Fix int to str
-
-		// Check Tile
-		propID := s.getLayoutID(newPos)
-		prop, isProperty := s.properties[propID]
-
-		tileID := propID // For consistency with old code
-
-		if isProperty {
-			ownerID, isOwned := game.PropertyOwnership[tileID]
-			if isOwned {
-				if ownerID != userID {
-					// Check Mortgage
-					tile := &game.Board[newPos]
-					if tile.IsMortgaged {
-						desc += ". Propiedad Hipotecada. No paga renta."
-					} else {
-						// Find Owner for payment
-						var owner *domain.PlayerState
-						for _, op := range game.Players {
-							if op.UserID == ownerID {
-								owner = op
-								break
-							}
-						}
-
-						if owner != nil {
-							rent := s.calculateRent(game, tile, total)
-
-							// Manual Rent Logic: Set Pending Rent
-							game.PendingRent = &domain.PendingRent{
-								TargetID:   userID,
-								CreditorID: ownerID,
-								Amount:     rent,
-								PropertyID: tileID,
-							}
-
-							desc += ". Cayó en " + prop.Name + ". Renta potencial: $" + strconv.Itoa(rent)
-							s.addLog(game, currentPlayer.Name+" cayó en "+prop.Name+". Esperando que "+owner.Name+" cobre la renta.", "ALERT")
-						}
-					}
-				} else {
-					desc += ". Cayó en su propia propiedad."
-				}
-			} else {
-				desc += ". Cayó en " + prop.Name + " (Sin dueño)"
-			}
-		} else {
-			// Special Tiles Logic
-			switch newPos {
-			case 5: // Income Tax
-				currentPlayer.Balance -= 200
-				desc += ". Pagó Impuesto sobre la Renta ($200)"
-				s.addLog(game, currentPlayer.Name+" pagó impuesto sobre la renta ($200)", "ALERT")
-			case 62: // Luxury Tax
-				currentPlayer.Balance -= 100
-				desc += ". Pagó Impuesto de Lujo ($100)"
-				s.addLog(game, currentPlayer.Name+" pagó impuesto de lujo ($100)", "ALERT")
-			case 48: // Go To Jail
-				currentPlayer.Position = 16 // Jail
-				currentPlayer.InJail = true
-				s.trackTileVisit(game, currentPlayer, 16)
-				desc += ". ¡Vaya a la Cárcel!"
-				s.addLog(game, currentPlayer.Name+" fue enviado a la cárcel", "ALERT")
-			}
-		}
-
-		game.LastAction = desc
-		s.addLog(game, desc, "DICE")
+	if currentPlayer == nil {
+		return
 	}
 
-	// 5. Broadcast (Explicit End Turn required now)
+	// ===== JAIL LOGIC =====
+	if currentPlayer.InJail {
+		if isDoubles {
+			// Rolled doubles - get out of jail FREE and move
+			currentPlayer.InJail = false
+			currentPlayer.JailTurns = 0
+			s.addLog(game, currentPlayer.Name+" sacó dobles y sale de la cárcel LIBRE!", "SUCCESS")
+			// Continue to move normally below
+		} else {
+			// Did not roll doubles
+			currentPlayer.JailTurns++
+			if currentPlayer.JailTurns >= 3 {
+				// Must pay bail after 3 failed attempts
+				currentPlayer.Balance -= 50
+				currentPlayer.InJail = false
+				currentPlayer.JailTurns = 0
+				s.addLog(game, currentPlayer.Name+" pagó $50 de fianza obligatoria tras 3 turnos en cárcel", "ALERT")
+				// Continue to move normally below
+			} else {
+				// Still in jail, end turn
+				s.addLog(game, currentPlayer.Name+" no sacó dobles. Turno "+strconv.Itoa(currentPlayer.JailTurns)+"/3 en cárcel", "INFO")
+				game.LastAction = currentPlayer.Name + " sigue en la cárcel (turno " + strconv.Itoa(currentPlayer.JailTurns) + "/3)"
+				s.handleEndTurn(game, userID)
+				return
+			}
+		}
+	}
+
+	// 4. Move Player (only if not stuck in jail)
+	oldPos := currentPlayer.Position
+	newPos := (currentPlayer.Position + total) % 64
+	currentPlayer.Position = newPos
+
+	// Track Visits
+	s.trackTileVisit(game, currentPlayer, newPos)
+
+	// Check Pass Go
+	var passGoMsg string
+	if newPos < oldPos { // If new position is less than old position, it means player passed GO
+		currentPlayer.Balance += 200
+		passGoMsg = " ¡Pasó por la SALIDA! Cobra $200."
+
+		// ===== CREDIT SYSTEM: Interest Accrual =====
+		s.initCreditProfile(currentPlayer)
+		currentPlayer.Credit.CurrentRound++
+
+		if currentPlayer.Loan > 0 {
+			currentPlayer.Credit.RoundsInDebt++
+			rate := s.getInterestRate(currentPlayer.Credit.Score)
+
+			// Add delinquency penalty after 3 rounds
+			if currentPlayer.Credit.RoundsInDebt > 3 {
+				rate += 10 // Extra 10% penalty
+			}
+
+			interest := (currentPlayer.Loan * rate) / 100
+
+			// ===== AUTOMATIC AMORTIZATION: 15% of principal =====
+			minimumPayment := currentPlayer.Loan * 15 / 100
+			if minimumPayment < 50 {
+				minimumPayment = 50 // Minimum $50 payment
+			}
+			if minimumPayment > currentPlayer.Loan {
+				minimumPayment = currentPlayer.Loan
+			}
+
+			totalDeduction := interest + minimumPayment
+
+			// Try to pay from balance (salary already added: +$200)
+			if currentPlayer.Balance >= totalDeduction {
+				currentPlayer.Balance -= totalDeduction
+				currentPlayer.Loan -= minimumPayment
+				passGoMsg += " Cuota: $" + strconv.Itoa(minimumPayment) + " + Int: $" + strconv.Itoa(interest) + "."
+
+				// If fully paid, reward credit
+				if currentPlayer.Loan <= 0 {
+					currentPlayer.Loan = 0
+					currentPlayer.Credit.LoansPaidOnTime++
+					currentPlayer.Credit.RoundsInDebt = 0
+					passGoMsg += " ¡Deuda saldada!"
+				}
+			} else {
+				// Can't afford minimum payment - just pay interest + whatever possible
+				currentPlayer.Balance -= interest
+				currentPlayer.Loan += interest   // Interest still accrues
+				currentPlayer.Credit.Score -= 25 // Penalty for missing minimum
+				passGoMsg += " ⚠️ No alcanzó cuota mínima ($" + strconv.Itoa(minimumPayment) + "). Score -25."
+			}
+
+			s.calculateCreditScore(game, currentPlayer)
+		}
+	}
+
+	// ===== BONUS: Landing exactly on GO (position 0) =====
+	if newPos == 0 {
+		currentPlayer.Balance += 500
+		passGoMsg += " ¡BONUS! Cayó en SALIDA: +$500"
+		s.addLog(game, currentPlayer.Name+" cayó exactamente en SALIDA y recibe $500 de bonus!", "SUCCESS")
+	}
+
+	// Check Tile
+	// 5. Update Log with result
+	desc := currentPlayer.Name + " lanzó " + strconv.Itoa(total) + passGoMsg // Fix int to str
+	if isDoubles {
+		desc += " (Dobles!)"
+	}
+
+	// Check Tile
+	propID := s.getLayoutID(newPos)
+	prop, isProperty := s.properties[propID]
+
+	tileID := propID // For consistency with old code
+
+	if isProperty {
+		ownerID, isOwned := game.PropertyOwnership[tileID]
+		if isOwned {
+			if ownerID != userID {
+				// Check Mortgage
+				tile := &game.Board[newPos]
+				if tile.IsMortgaged {
+					desc += ". Propiedad Hipotecada. No paga renta."
+				} else {
+					// Find Owner for payment
+					var owner *domain.PlayerState
+					for _, op := range game.Players {
+						if op.UserID == ownerID {
+							owner = op
+							break
+						}
+					}
+
+					if owner != nil {
+						rent := s.calculateRent(game, tile, total)
+
+						// AUTOMATIC RENT: Deduct from player, add to owner immediately
+						currentPlayer.Balance -= rent
+						owner.Balance += rent
+
+						desc += ". Cayó en " + prop.Name + ". Pagó renta: $" + strconv.Itoa(rent) + " a " + owner.Name
+						s.addLog(game, currentPlayer.Name+" pagó $"+strconv.Itoa(rent)+" de renta a "+owner.Name+" por "+prop.Name, "SUCCESS")
+					}
+				}
+			} else {
+				desc += ". Cayó en su propia propiedad."
+			}
+		} else {
+			desc += ". Cayó en " + prop.Name + " (Sin dueño)"
+		}
+	} else {
+		// Special Tiles Logic
+		switch newPos {
+		case 5: // Income Tax
+			currentPlayer.Balance -= 200
+			desc += ". Pagó Impuesto sobre la Renta ($200)"
+			s.addLog(game, currentPlayer.Name+" pagó impuesto sobre la renta ($200)", "ALERT")
+		case 62: // Luxury Tax
+			currentPlayer.Balance -= 100
+			desc += ". Pagó Impuesto de Lujo ($100)"
+			s.addLog(game, currentPlayer.Name+" pagó impuesto de lujo ($100)", "ALERT")
+		case 48: // Go To Jail
+			currentPlayer.Position = 16 // Jail
+			currentPlayer.InJail = true
+			currentPlayer.JailTurns = 0
+			s.trackTileVisit(game, currentPlayer, 16)
+			desc += ". ¡Vaya a la Cárcel!"
+			s.addLog(game, currentPlayer.Name+" fue enviado a la cárcel", "ALERT")
+			// Auto-end turn when going to jail
+			game.LastAction = desc
+			s.addLog(game, desc, "DICE")
+			s.handleEndTurn(game, userID)
+			return
+		}
+	}
+
+	game.LastAction = desc
+	s.addLog(game, desc, "DICE")
+
+	// 6. Broadcast
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handlePayBail(game *domain.GameState, userID string) {
+	// Find player
+	var player *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			player = p
+			break
+		}
+	}
+
+	if player == nil {
+		return
+	}
+
+	// Must be in jail to pay bail
+	if !player.InJail {
+		s.addLog(game, "No estás en la cárcel.", "ALERT")
+		return
+	}
+
+	// Must have enough balance
+	if player.Balance < 50 {
+		s.addLog(game, "No tienes suficiente dinero para pagar la fianza ($50).", "ALERT")
+		return
+	}
+
+	// Pay bail and get out of jail
+	player.Balance -= 50
+	player.InJail = false
+	player.JailTurns = 0
+	s.addLog(game, player.Name+" pagó $50 de fianza y sale de la cárcel!", "SUCCESS")
 	s.broadcastGameState(game)
 }
 
@@ -1538,12 +1632,7 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 		return
 	}
 
-	// Block end turn if there's pending rent to be collected from this player
-	if game.PendingRent != nil && game.PendingRent.TargetID == userID {
-		s.addLog(game, "No puedes terminar tu turno hasta que te cobren la renta.", "ALERT")
-		s.broadcastGameState(game)
-		return
-	}
+	// Rent is now automatic, no need to block for pending rent
 
 	// Simple Next Turn Logic using TurnOrder if available, else standard order
 	idx := -1
@@ -1603,7 +1692,7 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 
 	// Clear temporary turn state
 	game.DrawnCard = nil
-	// NOTE: PendingRent is NOT cleared here - player cannot end turn until rent is collected
+	// PendingRent no longer used - rent is now automatic
 
 	s.broadcastGameState(game)
 }
@@ -1730,13 +1819,14 @@ func (s *GameService) handleCollectRent(game *domain.GameState, userID string) {
 	// Execute Transfer
 	rent := game.PendingRent.Amount
 	targetID := game.PendingRent.TargetID
+	creditorID := game.PendingRent.CreditorID
 
 	var target, creditor *domain.PlayerState
 	for _, p := range game.Players {
 		if p.UserID == targetID {
 			target = p
 		}
-		if p.UserID == userID {
+		if p.UserID == creditorID {
 			creditor = p
 		}
 	}
@@ -1880,41 +1970,7 @@ func (s *GameService) checkBotTurn(game *domain.GameState) {
 		return
 	}
 
-	// 1.6 Check for PENDING RENT that a bot creditor needs to collect
-	s.mu.RLock()
-	hasPendingRent := game.PendingRent != nil
-	var creditorBot *domain.PlayerState
-	if hasPendingRent {
-		for _, p := range game.Players {
-			if p.IsBot && p.UserID == game.PendingRent.CreditorID {
-				creditorBot = p
-				break
-			}
-		}
-	}
-	s.mu.RUnlock()
-
-	if creditorBot != nil {
-		go func() {
-			time.Sleep(1 * time.Second) // Delay for realism
-
-			s.mu.Lock()
-			defer s.mu.Unlock()
-
-			// Re-fetch game safely
-			g, ok := s.games[gameID]
-			if !ok || g.PendingRent == nil {
-				return
-			}
-
-			// Double-check the creditor is still a bot and pending rent exists
-			if g.PendingRent.CreditorID == creditorBot.UserID {
-				log.Printf("Bot %s collecting rent from pending rent", creditorBot.Name)
-				s.handleCollectRent(g, creditorBot.UserID)
-			}
-		}()
-		return
-	}
+	// Rent is now automatic - removed PendingRent sections (1.6 and 1.65)
 
 	// 1.7 Check for ACTIVE TRADE where target is a bot
 	s.mu.RLock()
@@ -2080,6 +2136,14 @@ func (s *GameService) executeBotTurn(gameID string, bot *domain.PlayerState) {
 
 	case "MORTGAGE_PROPERTY":
 		s.handleMortgageProperty(game, bot.UserID, action.Payload)
+
+	case "INITIATE_TRADE":
+		s.handleInitiateTrade(game, bot.UserID, action.Payload)
+
+	default:
+		// Unknown action - fallback to END_TURN to prevent bot from getting stuck
+		log.Printf("Bot %s tried unknown action '%s' - falling back to END_TURN", bot.Name, action.Action)
+		s.handleEndTurn(game, bot.UserID)
 	}
 }
 
@@ -2175,6 +2239,32 @@ func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, d
 			rent = 25 // Minimum rent for parks/attractions
 		}
 		return rent
+	}
+
+	if tile.Type == "DICE_MULTIPLIER" {
+		count := 0
+		for _, t := range game.Board {
+			if t.Type == "DICE_MULTIPLIER" {
+				if oid, ok := game.PropertyOwnership[t.PropertyID]; ok && oid == ownerID {
+					count++
+				}
+			}
+		}
+		switch count {
+		case 1:
+			return diceRoll * 4
+		case 2:
+			return diceRoll * 10
+		case 3:
+			return diceRoll * 20
+		case 4:
+			return diceRoll * 40
+		default:
+			if count > 4 {
+				return diceRoll * 40
+			}
+			return diceRoll * 4 // Fallback
+		}
 	}
 
 	if tile.Type == "UTILITY" {
@@ -2348,8 +2438,8 @@ func (s *GameService) handleBuyBuilding(game *domain.GameState, userID string, p
 		}
 	}
 
-	if targetTile == nil || targetTile.GroupIdentifier == "" {
-		s.addLog(game, "Esta propiedad no permite construcción.", "ALERT")
+	if targetTile == nil || targetTile.GroupIdentifier == "" || targetTile.Type != "PROPERTY" {
+		s.addLog(game, "Esta propiedad no permite construcción (Solo grupos de color).", "ALERT")
 		return
 	}
 
