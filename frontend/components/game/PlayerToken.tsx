@@ -1,11 +1,13 @@
 import React from 'react';
 import { Box, Tooltip, Avatar } from '@mui/material';
+import Token3D from './Token3D';
 
 interface PlayerTokenProps {
     color: string;
     name: string;
     isCurrentTurn: boolean;
     size?: number | string;
+    shape?: string;
 }
 
 const colorMap: Record<string, string> = {
@@ -17,10 +19,12 @@ const colorMap: Record<string, string> = {
     'ORANGE': '#f97316',
     'CYAN': '#06b6d4',
     'PINK': '#ec4899',
+    // ...
 };
 
-export default function PlayerToken({ color, name, isCurrentTurn, size = 24 }: PlayerTokenProps) {
+export default function PlayerToken({ color, name, isCurrentTurn, size = 24, shape = 'CUBE' }: PlayerTokenProps) {
     const bgColor = colorMap[color] || '#a855f7';
+    const numSize = typeof size === 'number' ? size : 24;
 
     return (
         <Tooltip title={name} arrow>
@@ -38,29 +42,17 @@ export default function PlayerToken({ color, name, isCurrentTurn, size = 24 }: P
                     justifyContent: 'center'
                 }}
             >
-                <Avatar
-                    sx={{
-                        width: '100%',
-                        height: '100%',
-                        bgcolor: bgColor,
-                        border: 2,
-                        borderColor: 'common.white',
-                        fontSize: typeof size === 'number' ? size * 0.4 : '0.8rem',
-                        fontWeight: 'bold',
-                        boxShadow: `0 0 10px ${bgColor}CC`,
-                        animation: isCurrentTurn ? 'pulse 1.5s infinite' : 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        '@keyframes pulse': {
-                            '0%': { boxShadow: `0 0 0 0 ${bgColor}99` },
-                            '70%': { boxShadow: `0 0 0 6px ${bgColor}00` },
-                            '100%': { boxShadow: `0 0 0 0 ${bgColor}00` },
-                        },
-                    }}
-                >
-                    {name.substring(0, 2).toUpperCase()}
-                </Avatar>
+                {/* Use Token3D if shape is provided (default CUBE) */}
+                <Box sx={{ pointerEvents: 'none' }}>
+                    <Token3D color={color} shape={shape} size={numSize} animated={isCurrentTurn} />
+                </Box>
+
+                {/* Name Badge separate or overlay? 
+                    Token3D is pure CSS, maybe hard to read text on it.
+                    Let's put a tiny Avatar below or inside if it was 2D. 
+                    For 3D, maybe just rely on Tooltip for name.
+                    Or floating text.
+                */}
             </Box>
         </Tooltip>
     );

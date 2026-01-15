@@ -196,7 +196,7 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
                 <Box sx={{ position: 'absolute', bottom: 2, right: 2, display: 'flex', gap: 0.5, zIndex: 5, flexWrap: 'wrap-reverse', justifyContent: 'flex-end' }}>
                     {players.map(p => (
                         <Box key={p.user_id} sx={{ transform: 'scale(0.8)' }}>
-                            <PlayerToken color={p.token_color} name={p.name} isCurrentTurn={false} />
+                            <PlayerToken color={p.token_color} name={p.name} isCurrentTurn={false} shape={p.token_shape} />
                         </Box>
                     ))}
                 </Box>

@@ -8,6 +8,7 @@ interface Player {
     balance: number;
     position: number;
     token_color: string;
+    token_shape?: string;
     is_active: boolean;
     in_jail: boolean;
     loan: number;

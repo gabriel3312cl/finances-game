@@ -14,6 +14,7 @@ import AuctionModal from './AuctionModal';
 import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import DiceModal from './DiceModal';
+import LobbyCustomization from './LobbyCustomization';
 import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemButton, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology, Stop, Style } from '@mui/icons-material';
@@ -103,6 +104,16 @@ export default function GameBoard() {
     const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const [botDialogOpen, setBotDialogOpen] = useState(false);
     const [selectedBotType, setSelectedBotType] = useState('balanced');
+
+    // Lobby Visibility Management
+    const [lobbyOpen, setLobbyOpen] = useState(true);
+
+    // Auto-close lobby if game starts
+    useEffect(() => {
+        if (gameState?.status !== 'WAITING') {
+            setLobbyOpen(false);
+        }
+    }, [gameState?.status]);
 
     // Animate token movement when dice modal closes
     const handleDiceModalClose = () => {
@@ -308,11 +319,39 @@ export default function GameBoard() {
 
     const myPlayer = gameState.players?.find((p: any) => p.user_id === user.user_id);
 
+    // Lobby logic moved to top to avoid conditional hook call error
+
     return (
         <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#0f172a', overflow: 'hidden' }}>
 
             {/* MAIN CONTENT SPLIT */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+
+                {/* LOBBY OVERLAY */}
+                {gameState.status === 'WAITING' && lobbyOpen && (
+                    <LobbyCustomization
+                        gameState={gameState}
+                        user={user}
+                        sendMessage={sendMessage}
+                        onClose={() => setLobbyOpen(false)}
+                    />
+                )}
+
+                {/* RE-OPEN LOBBY BUTTON (Only visible if WAITING and lobby closed) */}
+                {gameState.status === 'WAITING' && !lobbyOpen && (
+                    <Box sx={{ position: 'absolute', top: 20, left: 20, zIndex: 50 }}>
+                        <Button
+                            variant="outlined"
+                            color="info"
+                            size="small"
+                            onClick={() => setLobbyOpen(true)}
+                            startIcon={<SettingsIcon />}
+                            sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+                        >
+                            PERSONALIZAR TOKEN
+                        </Button>
+                    </Box>
+                )}
 
                 {/* ACTIVE LANE VIEW */}
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 2 }}>

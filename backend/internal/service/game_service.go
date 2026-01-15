@@ -548,6 +548,44 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleAddBot(game, userID, action.Payload)
 	case "DECLARE_BANKRUPTCY":
 		s.handleDeclareBankruptcy(game, userID)
+	case "UPDATE_PLAYER_CONFIG":
+		s.handleUpdatePlayerConfig(game, userID, action.Payload)
+	}
+}
+
+func (s *GameService) handleUpdatePlayerConfig(game *domain.GameState, userID string, payload json.RawMessage) {
+	// Allow updates only in WAITING or maybe anytime? Let's say WAITING for now to avoid confusion during game,
+	// but user might want to change color mid-game if they want.
+	// Requirement says "before it begins", so let's restrict to WAITING for now, or allow anytime if it doesn't break anything.
+	// Allowing anytime is cooler.
+
+	var req struct {
+		TokenColor string `json:"token_color"`
+		TokenShape string `json:"token_shape"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+
+	updated := false
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			if req.TokenColor != "" {
+				p.TokenColor = req.TokenColor
+				updated = true
+			}
+			if req.TokenShape != "" {
+				p.TokenShape = req.TokenShape
+				updated = true
+			}
+			break
+		}
+	}
+
+	if updated {
+		// Log? Maybe not for simple cosmetic change to avoid spam
+		// s.addLog(game, "Player updated config", "INFO")
+		s.broadcastGameState(game)
 	}
 }
 

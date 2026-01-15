@@ -75,6 +75,7 @@ type PlayerState struct {
 	TileVisits       map[int]int    `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
 	IsBot            bool           `json:"is_bot"`
 	BotPersonalityID string         `json:"bot_personality_id,omitempty"`
+	TokenShape       string         `json:"token_shape"` // CUBE, PYRAMID, CYLINDER, STAR, etc.
 }
 
 // CreditProfile tracks a player's credit history for dynamic interest rates

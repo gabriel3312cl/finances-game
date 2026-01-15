@@ -128,7 +128,7 @@ function GameWrapper({ gameId }: { gameId: string }) {
                                 boxShadow: 4,
                                 bgcolor: 'rgba(0,0,0,0.2)'
                             }}>
-                                <PlayerToken color={myPlayer.token_color} name={myPlayer.name} isCurrentTurn={false} size="100%" />
+                                <PlayerToken color={myPlayer.token_color} name={myPlayer.name} isCurrentTurn={false} size="100%" shape={myPlayer.token_shape} />
                             </Box>
                         )}
                     </Box>
