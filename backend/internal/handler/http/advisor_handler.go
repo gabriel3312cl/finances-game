@@ -184,3 +184,10 @@ func (h *AdvisorHandler) ChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// Health checks LLM status
+func (h *AdvisorHandler) Health(w http.ResponseWriter, r *http.Request) {
+	isOnline := h.advisorService.CheckHealth()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"online": isOnline})
+}

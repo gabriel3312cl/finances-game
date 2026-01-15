@@ -16,14 +16,21 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 }
 
 func (r *UserRepository) Create(u *domain.User) error {
-	query := `INSERT INTO users (username, password_hash, special_code) VALUES ($1, $2, $3) RETURNING id, created_at`
-	return r.db.QueryRow(query, u.Username, u.Password, u.SpecialCode).Scan(&u.ID, &u.CreatedAt) // Note: u.Password holds the hash in this context
+	// Defaults if empty
+	if u.TokenColor == "" {
+		u.TokenColor = "RED"
+	}
+	if u.TokenShape == "" {
+		u.TokenShape = "CUBE"
+	}
+	query := `INSERT INTO users (username, password_hash, special_code, token_color, token_shape) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`
+	return r.db.QueryRow(query, u.Username, u.Password, u.SpecialCode, u.TokenColor, u.TokenShape).Scan(&u.ID, &u.CreatedAt)
 }
 
 func (r *UserRepository) GetByUsername(username string) (*domain.User, error) {
 	u := &domain.User{}
-	query := `SELECT id, username, password_hash, created_at FROM users WHERE username = $1`
-	err := r.db.QueryRow(query, username).Scan(&u.ID, &u.Username, &u.Password, &u.CreatedAt)
+	query := `SELECT id, username, password_hash, created_at, COALESCE(token_color, 'RED'), COALESCE(token_shape, 'CUBE') FROM users WHERE username = $1`
+	err := r.db.QueryRow(query, username).Scan(&u.ID, &u.Username, &u.Password, &u.CreatedAt, &u.TokenColor, &u.TokenShape)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("user not found")
@@ -35,8 +42,8 @@ func (r *UserRepository) GetByUsername(username string) (*domain.User, error) {
 
 func (r *UserRepository) GetByID(id string) (*domain.User, error) {
 	u := &domain.User{}
-	query := `SELECT id, username, created_at FROM users WHERE id = $1`
-	err := r.db.QueryRow(query, id).Scan(&u.ID, &u.Username, &u.CreatedAt)
+	query := `SELECT id, username, created_at, COALESCE(token_color, 'RED'), COALESCE(token_shape, 'CUBE') FROM users WHERE id = $1`
+	err := r.db.QueryRow(query, id).Scan(&u.ID, &u.Username, &u.CreatedAt, &u.TokenColor, &u.TokenShape)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("user not found")
@@ -44,6 +51,11 @@ func (r *UserRepository) GetByID(id string) (*domain.User, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+func (r *UserRepository) UpdateTokenConfig(userID, color, shape string) error {
+	_, err := r.db.Exec(`UPDATE users SET token_color = $1, token_shape = $2 WHERE id = $3`, color, shape, userID)
+	return err
 }
 
 func (r *UserRepository) ValidateSpecialCode(code string) (bool, error) {

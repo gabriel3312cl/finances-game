@@ -24,12 +24,16 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     balance INT DEFAULT 0,
-    is_admin BOOLEAN DEFAULT FALSE
+    is_admin BOOLEAN DEFAULT FALSE,
+    token_color VARCHAR(20) DEFAULT 'RED',
+    token_shape VARCHAR(20) DEFAULT 'CUBE'
 );
 -- Migration: Add special_code if missing (for existing DBs)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS special_code VARCHAR(20) REFERENCES valid_codes(code);
 -- Migration: Add updated_at if missing
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_color VARCHAR(20) DEFAULT 'RED';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_shape VARCHAR(20) DEFAULT 'CUBE';
 
 
 -- Game Rooms

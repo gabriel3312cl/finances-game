@@ -64,15 +64,7 @@ func (s *BotService) GenerateDecision(game *domain.GameState, botPlayer *domain.
 
 	// 3. Parse JSON
 	// Clean markdown code blocks if present
-	cleanJSON := strings.TrimSpace(responseStr)
-	if strings.HasPrefix(cleanJSON, "```json") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-	} else if strings.HasPrefix(cleanJSON, "```") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-	}
-	cleanJSON = strings.TrimSpace(cleanJSON)
+	cleanJSON := cleanJSON(responseStr)
 
 	var action domain.BotAction
 	if err := json.Unmarshal([]byte(cleanJSON), &action); err != nil {
@@ -113,10 +105,8 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 			if game.Dice[0] == 0 {
 				return &domain.BotAction{Action: "ROLL_DICE", Reason: "Turno: Tirar dados"}, nil
 			} else {
-				// Landed
+				// Landed - Check mandatory actions first
 				currentTile := s.getTile(game, bot.Position)
-
-				// 2. Events that must be handled before END_TURN
 
 				// A. Collect Rent?
 				if game.PendingRent != nil && game.PendingRent.CreditorID == bot.UserID {
@@ -141,11 +131,136 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 					}
 				}
 
-				// D. End Turn
+				// D. Construction Phase (Buy Buildings) - Priority over ending turn
+				// Check if we own any full Monopoly and have surplus cash
+				if bot.Balance > 300 { // Lower threshold to encourage building
+					for _, t := range game.Board {
+						if t.OwnerID != nil && *t.OwnerID == bot.UserID && t.GroupIdentifier != "" && !t.IsMortgaged {
+							// Check if full group owned
+							allOwned := true
+							minBuild := 10 // Start high
+							// Verify group ownership and find min build level
+							for _, other := range game.Board {
+								if other.GroupIdentifier == t.GroupIdentifier {
+									if other.OwnerID == nil || *other.OwnerID != bot.UserID {
+										allOwned = false
+										break
+									}
+									if other.BuildingCount < minBuild {
+										minBuild = other.BuildingCount
+									}
+								}
+							}
+
+							if allOwned {
+								// Check "Even Build" rule: We can build on 't' if t.BuildingCount == minBuild
+								// And limit < 5
+								if t.BuildingCount == minBuild && t.BuildingCount < 5 {
+									cost := t.HouseCost
+									if t.BuildingCount == 4 {
+										cost = t.HotelCost
+									} // Assuming same
+
+									if bot.Balance > cost+150 { // Keep smaller safety buffer
+										return &domain.BotAction{
+											Action:  "BUY_BUILDING",
+											Payload: json.RawMessage(fmt.Sprintf(`{"property_id": "%s"}`, t.PropertyID)),
+											Reason:  fmt.Sprintf("Inversión en casas para %s", t.Name),
+										}, nil
+									}
+								}
+							}
+						}
+					}
+				}
+
+				// E. Trade Proposal - Increase chance and logic
+				if game.ActiveTrade == nil && rand.Float64() < 0.40 { // 40% chance to consider trade before ending turn
+					// Find a property we want (part of a group we partially own)
+					wantedProps := []domain.Tile{}
+					myGroups := make(map[string]int)
+					groupSizes := make(map[string]int)
+
+					// Count my properties per group
+					for _, t := range game.Board {
+						if t.GroupIdentifier != "" {
+							groupSizes[t.GroupIdentifier]++
+							if t.OwnerID != nil && *t.OwnerID == bot.UserID {
+								myGroups[t.GroupIdentifier]++
+							}
+						}
+					}
+
+					// Find properties to complete a monopoly
+					for _, t := range game.Board {
+						if t.GroupIdentifier != "" && t.OwnerID != nil && *t.OwnerID != bot.UserID {
+							// If I own some of this group, I want the rest
+							if myGroups[t.GroupIdentifier] > 0 && myGroups[t.GroupIdentifier] < groupSizes[t.GroupIdentifier] {
+								wantedProps = append(wantedProps, t)
+							}
+						}
+					}
+
+					if len(wantedProps) > 0 {
+						// Pick a random wanted property
+						target := wantedProps[rand.Intn(len(wantedProps))]
+						targetOwnerID := *target.OwnerID
+
+						// Try to find a property to offer (duplicate or from group I have few of)
+						var offerPropID string
+						for _, t := range game.Board {
+							if t.OwnerID != nil && *t.OwnerID == bot.UserID && !t.IsMortgaged {
+								// Offer a property I don't have full monopoly on, and is not the one I'm building?
+								// Simple heuristic: Offer if I have < 50% of group
+								if float64(myGroups[t.GroupIdentifier])/float64(groupSizes[t.GroupIdentifier]) < 0.5 {
+									offerPropID = t.PropertyID
+									break
+								}
+							}
+						}
+
+						// Construct Offer logic
+						// If I have a property to swap, good. If not, offer CASH if rich.
+						canOffer := false
+						offerCash := 0
+						offerProps := []string{}
+
+						if offerPropID != "" {
+							offerProps = append(offerProps, offerPropID)
+							canOffer = true
+							// Maybe add small cash
+							if bot.Balance > 300 {
+								offerCash = 50
+							}
+						} else if bot.Balance > target.Price*2 {
+							// Cash only offer (aggressive)
+							offerCash = target.Price + 100 + rand.Intn(200) // Price + premium
+							canOffer = true
+						}
+
+						if canOffer {
+							payload := fmt.Sprintf(`{"target_id":"%s","offer_properties":%s,"offer_cash":%d,"request_properties":["%s"],"request_cash":0}`,
+								targetOwnerID, toJSONList(offerProps), offerCash, target.PropertyID)
+
+							return &domain.BotAction{
+								Action:  "INITIATE_TRADE",
+								Payload: json.RawMessage(payload),
+								Reason:  fmt.Sprintf("Quiero completar mi monopolio de %s", target.GroupIdentifier),
+							}, nil
+						}
+					}
+				}
+
+				// F. End Turn
 				// If I am target of pending rent, I cannot end turn until it's collected
 				if game.PendingRent != nil && game.PendingRent.TargetID == bot.UserID {
-					// Wait for creditor to collect rent - do nothing this cycle
-					return &domain.BotAction{Action: "PASS", Reason: "Esperando a que me cobren la renta"}, nil
+					// Proactively pay rent since backend now supports it
+					payload := fmt.Sprintf(`{"target_id":"%s","property_id":"%s"}`, game.PendingRent.TargetID, game.PendingRent.PropertyID)
+					return &domain.BotAction{
+						Action:  "PAY_RENT",
+						Payload: json.RawMessage(payload),
+						Reason:  "Debo pagar la renta para finalizar turno",
+					}, nil
 				}
 				return &domain.BotAction{Action: "END_TURN", Reason: "Fin de turno"}, nil
 			}
@@ -164,108 +279,16 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 		return &domain.BotAction{Action: "PASS_AUCTION", Reason: "Muy caro"}, nil
 	}
 
-	// 3. Optional: Construction Phase (Buy Buildings)
-	// Check if we own any full Monopoly and have surplus cash
-	// Only try this if no other mandatory action is pending (i.e., we are about to end turn or roll)
-	// But wait, if we are in "Status Active" and "Dice != 0", we are in post-roll phase.
-	// We can choose to BUY_BUILDING instead of END_TURN.
-	if game.CurrentTurnID == bot.UserID && game.Status == domain.GameStatusActive && game.Dice[0] != 0 {
-		if bot.Balance > 500 { // Only build if rich
-			for _, t := range game.Board {
-				if t.OwnerID != nil && *t.OwnerID == bot.UserID && t.GroupIdentifier != "" && !t.IsMortgaged {
-					// Check if full group owned
-					allOwned := true
-					minBuild := 10 // Start high
-					for _, other := range game.Board {
-						if other.GroupIdentifier == t.GroupIdentifier {
-							if other.OwnerID == nil || *other.OwnerID != bot.UserID {
-								allOwned = false
-								break
-							}
-							if other.BuildingCount < minBuild {
-								minBuild = other.BuildingCount
-							}
-						}
-					}
-
-					if allOwned {
-						// Check "Even Build" rule: We can build on 't' if t.BuildingCount == minBuild
-						// And limit < 5
-						if t.BuildingCount == minBuild && t.BuildingCount < 5 {
-							cost := t.HouseCost
-							if t.BuildingCount == 4 {
-								cost = t.HotelCost
-							} // Assuming same
-
-							if bot.Balance > cost+200 { // Keep safety buffer
-								return &domain.BotAction{Action: "BUY_BUILDING", Payload: json.RawMessage(fmt.Sprintf(`{"property_id": "%s"}`, t.PropertyID)), Reason: "Inversión en casas"}, nil
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 4. Trade Proposal - Try to initiate a trade with a human player occasionally
-	// Only do this if it's our turn and we have properties
-	if game.CurrentTurnID == bot.UserID && game.ActiveTrade == nil && rand.Float64() < 0.15 { // 15% chance each turn
-		// Find a property we want (part of a group we partially own)
-		wantedProps := []domain.Tile{}
-		myGroups := make(map[string]int)
-		groupSizes := make(map[string]int)
-
-		// Count my properties per group
-		for _, t := range game.Board {
-			if t.GroupIdentifier != "" {
-				groupSizes[t.GroupIdentifier]++
-				if t.OwnerID != nil && *t.OwnerID == bot.UserID {
-					myGroups[t.GroupIdentifier]++
-				}
-			}
-		}
-
-		// Find properties to complete a monopoly
-		for _, t := range game.Board {
-			if t.GroupIdentifier != "" && t.OwnerID != nil && *t.OwnerID != bot.UserID {
-				// If I own some of this group, I want the rest
-				if myGroups[t.GroupIdentifier] > 0 && myGroups[t.GroupIdentifier] < groupSizes[t.GroupIdentifier] {
-					wantedProps = append(wantedProps, t)
-				}
-			}
-		}
-
-		if len(wantedProps) > 0 {
-			// Pick a random wanted property
-			target := wantedProps[rand.Intn(len(wantedProps))]
-			targetOwnerID := *target.OwnerID
-
-			// Find a property to offer (from a group I don't care about)
-			for _, t := range game.Board {
-				if t.OwnerID != nil && *t.OwnerID == bot.UserID && !t.IsMortgaged {
-					// Offer a property I don't have full monopoly on
-					if myGroups[t.GroupIdentifier] < groupSizes[t.GroupIdentifier] {
-						// Create trade offer
-						cashOffer := 0
-						if bot.Balance > 200 {
-							cashOffer = rand.Intn(150) + 50 // Offer $50-200 extra
-						}
-
-						payload := fmt.Sprintf(`{"target_id":"%s","offer_properties":["%s"],"offer_cash":%d,"request_properties":["%s"],"request_cash":0}`,
-							targetOwnerID, t.PropertyID, cashOffer, target.PropertyID)
-
-						return &domain.BotAction{
-							Action:  "INITIATE_TRADE",
-							Payload: json.RawMessage(payload),
-							Reason:  fmt.Sprintf("Quiero completar mi monopolio de %s", target.GroupIdentifier),
-						}, nil
-					}
-				}
-			}
-		}
-	}
-
 	return nil, fmt.Errorf("no heuristic action found")
+}
+
+func toJSONList(items []string) string {
+	if len(items) == 0 {
+		return "[]"
+	}
+	// primitive json marshal for list of strings
+	b, _ := json.Marshal(items)
+	return string(b)
 }
 
 func (s *BotService) buildRefinedBotPrompt(game *domain.GameState, bot *domain.PlayerState) string {
@@ -402,7 +425,7 @@ func (s *BotService) callLLM(req LLMRequest) (string, error) {
 }
 
 // GenerateChatResponse generates a contextual chat response with bot personality
-func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.PlayerState, playerMessage string, playerName string) (string, error) {
+func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.PlayerState, playerMessage string, playerName string) (string, *domain.BotAction, error) {
 	profile := domain.GetBotProfile(bot.BotPersonalityID)
 
 	// Build context about current game state
@@ -439,6 +462,26 @@ func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.Pl
 		}
 	}
 
+	// Property/Trade Context
+	gameContext.WriteString("\nPROPIEDADES CLAVE:\n")
+	for _, t := range game.Board {
+		if t.Type == "PROPERTY" || t.Type == "UTILITY" || t.Type == "RAILROAD" {
+			owner := "Nadie"
+			if t.OwnerID != nil {
+				for _, p := range game.Players {
+					if p.UserID == *t.OwnerID {
+						owner = p.Name
+						if p.UserID == bot.UserID {
+							owner = "YO"
+						}
+						break
+					}
+				}
+			}
+			gameContext.WriteString(fmt.Sprintf("- %s (%s): Dueño=%s, Precio=%d\n", t.Name, t.GroupIdentifier, owner, t.Price))
+		}
+	}
+
 	// Build the prompt
 	systemPrompt := fmt.Sprintf(`Eres un bot de IA jugando Monopoly llamado "%s".
 %s
@@ -446,17 +489,29 @@ func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.Pl
 INSTRUCCIONES:
 - Responde en español, con tu personalidad única
 - Sé breve (1-2 oraciones máximo)
-- Puedes hablar sobre estrategia, proponer tratos, bromear, o comentar el juego
-- Si te preguntan cuánto dinero tienes, puedes responder honestamente o mentir según tu personalidad
-- Si quieren negociar, puedes mostrar interés o rechazar según te convenga
-- NO uses formato JSON, solo texto natural
-- Añade uno o dos emojis relevantes
+- Puedes hablar sobre estrategia, proponer tratos, bromear, o comentar el juego.
+
+CAPACIDAD DE ACCIÓN:
+Si llegas a un acuerdo con un jugador en el chat, PUEDES EJECUTARLO.
+Para ejecutar una acción, incluye al final de tu mensaje un bloque JSON con la acción.
+Solo usa la acción si estás SEGURO de que quieres hacerlo (ej. aceptaste una oferta explicita).
+
+FORMATO DE RESPUESTA:
+"Texto de respuesta normal aquí... [ACTION] {JSON_DE_ACCION}"
+
+ACCIONES DISPONIBLES:
+1. INICIATE_TRADE: Para proponer o aceptar un intercambio.
+   { "action": "INITIATE_TRADE", "payload": { "target_id": "ID_JUGADOR", "offer_properties": ["ID_PROP1"], "offer_cash": 100, "request_properties": ["ID_PROP2"], "request_cash": 0 } }
+   *NOTA*: Debes inferir los IDs correctos del contexto. Si no estás seguro, solo pide confirmación en texto.
+
+2. ACCEPT_TRADE: Si hay una oferta activa hacia ti (revisar estado).
+   { "action": "ACCEPT_TRADE", "payload": { "trade_id": "ID_TRADE" } }
 
 CONTEXTO ACTUAL:
 %s`, bot.Name, profile.Description, gameContext.String())
 
-	userPrompt := fmt.Sprintf("El jugador '%s' te envió este mensaje: \"%s\"\n\nResponde brevemente y con personalidad:",
-		playerName, playerMessage)
+	userPrompt := fmt.Sprintf("El jugador '%s' (ID: %s) te envió este mensaje: \"%s\"\n\nSi acuerdas un trato, EJECÚTALO usando [ACTION] JSON. Responde:",
+		playerName, userIDFromPlayerName(game, playerName), playerMessage)
 
 	messages := []ChatMessage{
 		{Role: "system", Content: systemPrompt},
@@ -466,21 +521,81 @@ CONTEXTO ACTUAL:
 	llmReq := LLMRequest{
 		Model:       "local-model",
 		Messages:    messages,
-		Temperature: 0.9, // Higher for more creative responses
-		MaxTokens:   150,
+		Temperature: 0.7, // Lower temp for logic reliability
+		MaxTokens:   300,
 		Stream:      false,
 	}
 
 	response, err := s.callLLM(llmReq)
 	if err != nil {
-		// Fallback to generic response on error
-		fallbacks := []string{
-			"🎲 ¡Interesante! Pero ahora estoy concentrado en ganar...",
-			"💰 Mmm, lo pensaré... ¿tienes algo que ofrecer?",
-			"🏠 ¡Hablemos de propiedades! ¿Qué tienes en mente?",
-		}
-		return fallbacks[len(playerMessage)%len(fallbacks)], nil
+		// Fallback
+		return fallbackResponse(playerMessage), nil, nil
 	}
 
-	return strings.TrimSpace(response), nil
+	// Parse Response for Action
+	finalText := response
+	var action *domain.BotAction
+
+	if idx := strings.Index(response, "[ACTION]"); idx != -1 {
+		finalText = strings.TrimSpace(response[:idx])
+		jsonPart := strings.TrimSpace(response[idx+8:]) // len("[ACTION]") == 8
+
+		// Clean JSON
+		jsonPart = cleanJSON(jsonPart)
+
+		var act domain.BotAction
+		if err := json.Unmarshal([]byte(jsonPart), &act); err == nil {
+			action = &act
+			// Validate payload format if needed, but GameService will handle it
+		} else {
+			fmt.Printf("Error parsing bot chat action: %v\nJSON: %s\n", err, jsonPart)
+		}
+	}
+
+	return strings.TrimSpace(finalText), action, nil
+}
+
+func fallbackResponse(msg string) string {
+	fallbacks := []string{
+		"🎲 ¡Interesante! Pero ahora estoy concentrado en ganar...",
+		"💰 Mmm, lo pensaré... ¿tienes algo que ofrecer?",
+		"🏠 ¡Hablemos de propiedades! ¿Qué tienes en mente?",
+	}
+	return fallbacks[len(msg)%len(fallbacks)]
+}
+
+func userIDFromPlayerName(g *domain.GameState, name string) string {
+	for _, p := range g.Players {
+		if p.Name == name {
+			return p.UserID
+		}
+	}
+	return ""
+}
+
+// cleanJSON tries to extract the JSON object from a potential dirty string
+func cleanJSON(input string) string {
+	// 1. Remove Markdown code blocks if present
+	input = strings.TrimSpace(input)
+	if strings.Contains(input, "```") {
+		// Try to find first ```json or ``` and last ```
+		start := strings.Index(input, "```")
+		end := strings.LastIndex(input, "```")
+		if end > start {
+			content := input[start+3 : end]
+			if strings.HasPrefix(content, "json") {
+				content = strings.TrimPrefix(content, "json")
+			}
+			input = strings.TrimSpace(content)
+		}
+	}
+
+	// 2. Find first '{' and last '}'
+	firstOpen := strings.Index(input, "{")
+	lastClose := strings.LastIndex(input, "}")
+	if firstOpen != -1 && lastClose != -1 && lastClose > firstOpen {
+		input = input[firstOpen : lastClose+1]
+	}
+
+	return input
 }

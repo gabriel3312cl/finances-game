@@ -119,6 +119,24 @@ func (s *AdvisorService) GetAdvice(req *ChatRequest) (*ChatResponse, error) {
 	}, nil
 }
 
+// CheckHealth checks if the LLM service is reachable
+func (s *AdvisorService) CheckHealth() bool {
+	// Simple GET request to models endpoint or similar fast endpoint
+	// LLM Studio usually has /v1/models
+	url := strings.TrimSuffix(s.llmEndpoint, "/chat/completions") + "/models"
+
+	// If llmEndpoint is just base url, adjust.
+	// Assuming standard OpenAI compatible endpoint: "http://host:port/v1/chat/completions"
+	// We want "http://host:port/v1/models"
+
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // buildSystemPrompt creates the system prompt with game context
 func (s *AdvisorService) buildSystemPrompt(game *domain.GameState, userID string) string {
 	var sb strings.Builder

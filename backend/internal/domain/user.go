@@ -8,6 +8,8 @@ type User struct {
 	Username    string    `json:"username"`
 	Password    string    `json:"-"` // Hash
 	SpecialCode *string   `json:"-"` // Pointer to allow nulls if needed, though schema enforces FK
+	TokenColor  string    `json:"token_color"`
+	TokenShape  string    `json:"token_shape"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

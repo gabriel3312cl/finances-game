@@ -23,7 +23,8 @@ type GameService struct {
 	properties     map[string]domain.Property // Cache
 	boardLayout    map[int]string             // Position -> PropertyID (UUID)
 	db             *sql.DB
-	gameRepo       *postgres.GameRepository // Add Repo
+	gameRepo       *postgres.GameRepository
+	userRepo       *postgres.UserRepository // Add UserRepo
 	mu             sync.RWMutex
 	hub            *websocket.Hub
 	active         map[string]bool
@@ -32,13 +33,14 @@ type GameService struct {
 	botService     *BotService // Dependency injection
 }
 
-func NewGameService(hub *websocket.Hub, db *sql.DB, gameRepo *postgres.GameRepository) *GameService {
+func NewGameService(hub *websocket.Hub, db *sql.DB, gameRepo *postgres.GameRepository, userRepo *postgres.UserRepository) *GameService {
 	s := &GameService{
 		games:       make(map[string]*domain.GameState),
 		properties:  make(map[string]domain.Property),
 		boardLayout: make(map[int]string),
 		db:          db,
 		gameRepo:    gameRepo,
+		userRepo:    userRepo,
 		hub:         hub,
 		active:      make(map[string]bool),
 	}
@@ -233,12 +235,26 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 		TurnOrder:         []string{},
 	}
 
+	// Fetch host with full details (including TokenConfig)
+	hostUser, err := s.userRepo.GetByID(host.ID)
+	tokenColor := "RED"
+	tokenShape := "CUBE"
+	if err == nil && hostUser != nil {
+		if hostUser.TokenColor != "" {
+			tokenColor = hostUser.TokenColor
+		}
+		if hostUser.TokenShape != "" {
+			tokenShape = hostUser.TokenShape
+		}
+	}
+
 	game.Players = append(game.Players, &domain.PlayerState{
 		UserID:     host.ID,
 		Name:       host.Username,
 		Balance:    1500,
 		Position:   0,
-		TokenColor: "RED",
+		TokenColor: tokenColor,
+		TokenShape: tokenShape,
 		IsActive:   true,
 	})
 
@@ -430,19 +446,32 @@ func (s *GameService) JoinGame(code string, user *domain.User) (*domain.GameStat
 		}
 	}
 
-	// Assign Random Color from available pool (simplified)
-	colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
-	assignedColor := "BLUE"
-	// Find unused color
-	usedColors := make(map[string]bool)
-	for _, p := range game.Players {
-		usedColors[p.TokenColor] = true
+	// Fetch user details for token config
+	var tokenColor, tokenShape string
+	dbUser, err := s.userRepo.GetByID(user.ID)
+	if err == nil && dbUser != nil {
+		tokenColor = dbUser.TokenColor
+		tokenShape = dbUser.TokenShape
 	}
-	for _, c := range colors {
-		if !usedColors[c] {
-			assignedColor = c
-			break
+
+	// If no preference (or first time), assign random unused color
+	if tokenColor == "" {
+		colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
+		assignedColor := "BLUE"
+		usedColors := make(map[string]bool)
+		for _, p := range game.Players {
+			usedColors[p.TokenColor] = true
 		}
+		for _, c := range colors {
+			if !usedColors[c] {
+				assignedColor = c
+				break
+			}
+		}
+		tokenColor = assignedColor
+	}
+	if tokenShape == "" {
+		tokenShape = "CUBE"
 	}
 
 	game.Players = append(game.Players, &domain.PlayerState{
@@ -450,7 +479,8 @@ func (s *GameService) JoinGame(code string, user *domain.User) (*domain.GameStat
 		Name:       user.Username,
 		Balance:    1500,
 		Position:   0,
-		TokenColor: assignedColor,
+		TokenColor: tokenColor,
+		TokenShape: tokenShape,
 		IsActive:   true,
 	})
 
@@ -613,6 +643,24 @@ func (s *GameService) handleUpdatePlayerConfig(game *domain.GameState, userID st
 	}
 
 	if updated {
+		// Persist changes if it's a real user (not a bot) and not "bot_..."
+		if !strings.HasPrefix(userID, "BOT_") {
+			go func() {
+				// We need the latest color/shape from the player struct
+				var c, sh string
+				for _, p := range game.Players {
+					if p.UserID == userID {
+						c = p.TokenColor
+						sh = p.TokenShape
+						break
+					}
+				}
+				if err := s.userRepo.UpdateTokenConfig(userID, c, sh); err != nil {
+					log.Printf("Error updating token config for user %s: %v", userID, err)
+				}
+			}()
+		}
+
 		// Log? Maybe not for simple cosmetic change to avoid spam
 		// s.addLog(game, "Player updated config", "INFO")
 		s.broadcastGameState(game)
@@ -1674,9 +1722,9 @@ func (s *GameService) handleCollectRent(game *domain.GameState, userID string) {
 		s.addLog(game, "No hay renta pendiente para cobrar (ya fue cobrada o expiró).", "INFO")
 		return
 	}
-	if game.PendingRent.CreditorID != userID {
-		s.addLog(game, "Solo el propietario puede cobrar esta renta.", "ALERT")
-		return // Only creditor can collect
+	if game.PendingRent.CreditorID != userID && game.PendingRent.TargetID != userID {
+		s.addLog(game, "Solo el propietario puede cobrar o el inquilino pagar esta renta.", "ALERT")
+		return
 	}
 
 	// Execute Transfer
@@ -2247,14 +2295,18 @@ func (s *GameService) handlePayRent(game *domain.GameState, userID string, paylo
 	}
 
 	// Strict Match: Creditor must be User, Target must match, Property must match
-	if game.PendingRent.CreditorID != userID {
-		s.addLog(game, "No tienes permiso para cobrar esta renta.", "ALERT")
+	// FIX: handlePayRent is called by the DEBTOR (TargetID), so we check if userID == TargetID
+	if game.PendingRent.TargetID != userID {
+		s.addLog(game, "No tienes permiso para pagar esta renta (no eres el deudor).", "ALERT")
 		return
 	}
+	// Verify Request Payload matches Pending Rent
+	// We trust PendingRent state.
 	if game.PendingRent.TargetID != req.TargetID {
 		s.addLog(game, "El deudor no coincide con la renta pendiente.", "ALERT")
 		return
 	}
+
 	if game.PendingRent.PropertyID != req.PropertyID {
 		s.addLog(game, "La propiedad no coincide con la renta pendiente.", "ALERT")
 		return
@@ -2755,14 +2807,16 @@ func (s *GameService) handleSendChat(game *domain.GameState, userID string, payl
 
 				// Generate response using LLM with personality (outside lock)
 				var response string
+				var action *domain.BotAction
 				if s.botService != nil {
 					s.mu.RLock()
 					g, ok := s.games[gameID]
 					s.mu.RUnlock()
 					if ok {
-						resp, err := s.botService.GenerateChatResponse(g, bot, req.Message, senderName)
+						resp, act, err := s.botService.GenerateChatResponse(g, bot, req.Message, senderName)
 						if err == nil {
 							response = resp
+							action = act
 						}
 					}
 				}
@@ -2786,6 +2840,23 @@ func (s *GameService) handleSendChat(game *domain.GameState, userID string, payl
 				}
 
 				s.addBotThought(g, bot, response)
+
+				// Execute Action if parsed from chat
+				if action != nil {
+					log.Printf("BOT CHAT ACTION [%s]: %s", bot.Name, action.Action)
+
+					switch action.Action {
+					case "INITIATE_TRADE":
+						s.handleInitiateTrade(g, bot.UserID, action.Payload)
+					case "ACCEPT_TRADE":
+						s.handleAcceptTrade(g, bot.UserID, action.Payload)
+					case "REJECT_TRADE":
+						s.handleRejectTrade(g, bot.UserID, action.Payload)
+					case "OFFER_PURCHASE": // Hypothetical, treated as trade usually
+						// Map to appropriate handler if exists
+					}
+				}
+
 				s.broadcastGameState(g)
 			}()
 		}

@@ -52,7 +52,7 @@ func main() {
 	gameRepo := postgres.NewGameRepository(db)
 
 	// Game Service (In-memory + Persistence)
-	gameService := service.NewGameService(hub, db, gameRepo)
+	gameService := service.NewGameService(hub, db, gameRepo, userRepo)
 
 	// Advisor Service (LLM Integration)
 	llmEndpoint := os.Getenv("LLM_ENDPOINT")
@@ -87,6 +87,7 @@ func main() {
 
 	// Advisor Routes
 	advisorHandler := handler.NewAdvisorHandler(advisorService)
+	mux.HandleFunc("/api/advisor/health", advisorHandler.Health) // Public check
 	mux.HandleFunc("/api/games/", handler.AuthMiddleware(userRepo, func(w http.ResponseWriter, r *http.Request) {
 		// Route: /api/games/{id}/advisor/stream for SSE streaming
 		if strings.HasSuffix(r.URL.Path, "advisor/stream") {

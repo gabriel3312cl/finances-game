@@ -108,6 +108,15 @@ export default function GameBoard() {
 
     // Lobby Visibility Management
     const [lobbyOpen, setLobbyOpen] = useState(true);
+    const [isLLMOnline, setIsLLMOnline] = useState(true);
+
+    useEffect(() => {
+        // Check LLM Health on mount
+        fetch(`${API_URL}/advisor/health`)
+            .then(res => res.json())
+            .then(data => setIsLLMOnline(!!data.online))
+            .catch(() => setIsLLMOnline(false));
+    }, []);
 
     // Auto-close lobby if game starts
     useEffect(() => {
@@ -194,12 +203,29 @@ export default function GameBoard() {
 
     // Trigger dice modal when dice values update (on roll)
     const prevDiceRef = useRef<string | null>(null);
-    useEffect(() => {
+    React.useLayoutEffect(() => {
         const currentDice = JSON.stringify(gameState?.dice);
         if (currentDice && currentDice !== prevDiceRef.current && gameState?.dice && gameState.dice[0] > 0) {
             // Show modal when dice values change
             setDiceModalOpen(true);
             playSoundEffect('dice');
+
+            // IMMEDIATE VISUAL FIX:
+            // The gameState already has the NEW position. We must override it immediately with the OLD position
+            // so the token doesn't "jump" to the destination while the dice modal is showing.
+            const currentPlayer = gameState?.players?.find((p: any) => p.user_id === gameState?.current_turn_id);
+            if (currentPlayer) {
+                const finalPosition = currentPlayer.position;
+                const diceTotal = (gameState?.dice?.[0] || 0) + (gameState?.dice?.[1] || 0);
+
+                let startPosition = finalPosition - diceTotal;
+                if (startPosition < 0) {
+                    startPosition = 64 + startPosition; // Correct negative wraparound
+                }
+
+                // Snap visuals to start position
+                setAnimatedPositions(prev => ({ ...prev, [currentPlayer.user_id]: startPosition }));
+            }
         }
         prevDiceRef.current = currentDice;
     }, [gameState?.dice]);
@@ -383,10 +409,10 @@ export default function GameBoard() {
         <Box sx={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#0f172a', overflow: 'hidden' }}>
 
             {/* MAIN CONTENT SPLIT */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto', overflowX: 'hidden' }}>
 
-                {/* LOBBY OVERLAY */}
-                {gameState.status === 'WAITING' && lobbyOpen && (
+                {/* LOBBY OVERLAY - Allow opening anytime if lobbyOpen is true */}
+                {lobbyOpen && (
                     <LobbyCustomization
                         gameState={gameState}
                         user={user}
@@ -395,8 +421,8 @@ export default function GameBoard() {
                     />
                 )}
 
-                {/* RE-OPEN LOBBY BUTTON (Only visible if WAITING and lobby closed) */}
-                {gameState.status === 'WAITING' && !lobbyOpen && (
+                {/* RE-OPEN LOBBY BUTTON (Visible if lobby closed) */}
+                {!lobbyOpen && (
                     <Box sx={{ position: 'absolute', top: 20, left: 20, zIndex: 50 }}>
                         <Button
                             variant="outlined"
@@ -587,14 +613,31 @@ export default function GameBoard() {
                                         }}
                                         sx={{
                                             width: '100%', height: '100%',
-                                            bgcolor: playerHere ? playerHere.token_color : cellColor,
-                                            border: playerHere ? '1px solid white' : (minimapLayer === 'owner' && tile.propertyId && !getOwnerColor(gameState, tile.propertyId) ? '1px dashed rgba(255,255,255,0.1)' : 'none'),
+                                            bgcolor: cellColor,
+                                            border: minimapLayer === 'owner' && tile.propertyId && !getOwnerColor(gameState, tile.propertyId) ? '1px dashed rgba(255,255,255,0.1)' : 'none',
                                             borderRadius: '2px',
                                             opacity: isFocused ? 1 : 0.3, // Dim non-focused lanes
                                             transition: 'opacity 0.3s, background-color 0.3s',
                                             cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                             '&:hover': { opacity: 1, transform: 'scale(1.1)', zIndex: 10 }
                                         }}>
+                                        {/* Player Token on Minimap */}
+                                        {playerHere && (
+                                            <Tooltip title={playerHere.name}>
+                                                <Box sx={{
+                                                    width: '85%',
+                                                    height: '85%',
+                                                    borderRadius: '50%',
+                                                    bgcolor: playerHere.token_color,
+                                                    border: '2px solid white',
+                                                    boxShadow: '0 0 5px rgba(0,0,0,0.8)',
+                                                    zIndex: 20
+                                                }} />
+                                            </Tooltip>
+                                        )}
                                     </Box>
                                 );
                             });
@@ -602,51 +645,8 @@ export default function GameBoard() {
                     </Paper>
                 </Box>
 
-                {/* ACTION PANEL (Bottom Overlay) */}
+                {/* ACTION PANEL MOVED TO FIXED POSITION */}
 
-                {canStart && (
-                    <Box sx={{
-                        p: 2,
-                        bgcolor: '#1e293b',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 2,
-                        borderTop: 1,
-                        borderColor: 'grey.700'
-                    }}>
-
-                        {/* Action Buttons Logic */}
-                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
-
-                            {/* 0. Start Game (Host only, when WAITING and 2+ players) */}
-                            {canStart && (
-                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <TextField
-                                        label="Dinero Inicial"
-                                        type="number"
-                                        value={initialBalance}
-                                        onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
-                                        inputProps={{ min: 500, max: 10000, step: 100 }}
-                                        size="small"
-                                        sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
-                                    />
-                                    <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', { initial_balance: initialBalance })}>
-                                        INICIAR JUEGO
-                                    </Button>
-                                </Box>
-                            )}
-
-                            {/* Add Bot Button (Host only, Waiting) */}
-                            {isHost && gameState?.status === 'WAITING' && (
-                                <Button variant="outlined" color="secondary" onClick={() => setBotDialogOpen(true)}>
-                                    AGREGAR BOT
-                                </Button>
-                            )}
-                        </Box>
-                    </Box>
-
-                )}
             </Box>
 
             {/* ADD BOT DIALOG */}
@@ -658,31 +658,36 @@ export default function GameBoard() {
                     </Typography>
                     <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper', borderRadius: 1 }}>
                         {[
-                            { id: 'classic', name: 'Bot Clásico (Rápido)', desc: 'Sin IA. Juega rápido y lógico.' },
-                            { id: 'balanced', name: 'Sr. Equilibrado (IA)', desc: 'Juega seguro.' },
-                            { id: 'tycoon', name: 'El Magnate (IA)', desc: 'Agresivo con monopolios.' },
-                            { id: 'saver', name: 'El Ahorrador (IA)', desc: 'Evita gastar.' },
-                            { id: 'speculator', name: 'El Especulador (IA)', desc: 'Le gustan las subastas.' }
-                        ].map((b) => (
-                            <ListItem key={b.id} disablePadding>
-                                <ListItemButton
-                                    selected={selectedBotType === b.id}
-                                    onClick={() => setSelectedBotType(b.id)}
-                                    sx={{
-                                        '&.Mui-selected': { bgcolor: 'primary.dark' },
-                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
-                                    }}
-                                >
-                                    <ListItemText
-                                        primary={b.name}
-                                        secondary={b.desc}
-                                        primaryTypographyProps={{ color: 'white', fontWeight: 'bold' }}
-                                        secondaryTypographyProps={{ color: 'grey.400' }}
-                                    />
-                                    {selectedBotType === b.id && <CheckCircle color="primary" />}
-                                </ListItemButton>
-                            </ListItem>
-                        ))}
+                            { id: 'classic', name: 'Bot Clásico (Rápido)', desc: 'Sin IA. Juega rápido y lógico.', requiresLLM: false },
+                            { id: 'balanced', name: 'Sr. Equilibrado (IA)', desc: 'Juega seguro.', requiresLLM: true },
+                            { id: 'tycoon', name: 'El Magnate (IA)', desc: 'Agresivo con monopolios.', requiresLLM: true },
+                            { id: 'saver', name: 'El Ahorrador (IA)', desc: 'Evita gastar.', requiresLLM: true },
+                            { id: 'speculator', name: 'El Especulador (IA)', desc: 'Le gustan las subastas.', requiresLLM: true }
+                        ].map((b) => {
+                            const disabled = b.requiresLLM && !isLLMOnline;
+                            return (
+                                <ListItem key={b.id} disablePadding>
+                                    <ListItemButton
+                                        selected={selectedBotType === b.id}
+                                        disabled={disabled}
+                                        onClick={() => setSelectedBotType(b.id)}
+                                        sx={{
+                                            '&.Mui-selected': { bgcolor: 'primary.dark' },
+                                            '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+                                            opacity: disabled ? 0.5 : 1
+                                        }}
+                                    >
+                                        <ListItemText
+                                            primary={b.name + (disabled ? " (Offline)" : "")}
+                                            secondary={disabled ? "Requiere LLM activo" : b.desc}
+                                            primaryTypographyProps={{ color: 'white', fontWeight: 'bold' }}
+                                            secondaryTypographyProps={{ color: disabled ? 'error.main' : 'grey.400' }}
+                                        />
+                                        {selectedBotType === b.id && <CheckCircle color="primary" />}
+                                    </ListItemButton>
+                                </ListItem>
+                            );
+                        })}
                     </List>
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 1 }}>
                         <Button color="inherit" onClick={() => setBotDialogOpen(false)}>Cancelar</Button>
@@ -695,6 +700,54 @@ export default function GameBoard() {
                     </Box>
                 </DialogContent>
             </Dialog>
+
+            {/* FIXED ACTION PANEL (Start/Add Bot) */}
+            {isHost && (
+                <Box sx={{
+                    position: 'fixed',
+                    bottom: logHeight, // Anchor to top of log panel
+                    left: 0,
+                    right: 0,
+                    p: 2,
+                    bgcolor: 'rgba(30, 41, 59, 0.95)',
+                    backdropFilter: 'blur(10px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 2,
+                    borderTop: 1,
+                    borderColor: 'grey.700',
+                    zIndex: 55, // Below FABs (60) but above board content
+                    transition: 'bottom 0.1s'
+                }}>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {/* Start Game */}
+                        {canStart && (
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <TextField
+                                    label="Dinero Inicial"
+                                    type="number"
+                                    value={initialBalance}
+                                    onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
+                                    inputProps={{ min: 500, max: 10000, step: 100 }}
+                                    size="small"
+                                    sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
+                                />
+                                <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', { initial_balance: initialBalance })}>
+                                    INICIAR JUEGO
+                                </Button>
+                            </Box>
+                        )}
+
+                        {/* Add Bot */}
+                        {isHost && gameState?.status === 'WAITING' && (
+                            <Button variant="outlined" color="secondary" onClick={() => setBotDialogOpen(true)}>
+                                AGREGAR BOT
+                            </Button>
+                        )}
+                    </Box>
+                </Box>
+            )}
 
             {/* LOG CONSOLE */}
             {/* LOG CONSOLE & CHAT PANEL */}
