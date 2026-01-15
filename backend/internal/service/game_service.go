@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"sort"
@@ -27,6 +28,7 @@ type GameService struct {
 	active         map[string]bool
 	chanceCards    []domain.Card
 	communityCards []domain.Card
+	botService     *BotService // Dependency injection
 }
 
 func NewGameService(hub *websocket.Hub, db *sql.DB, gameRepo *postgres.GameRepository) *GameService {
@@ -42,6 +44,11 @@ func NewGameService(hub *websocket.Hub, db *sql.DB, gameRepo *postgres.GameRepos
 	s.loadPropertiesAndLayout()
 	s.loadActiveGames() // Load from DB
 	return s
+}
+
+// SetBotService injects the bot service (circular dependency workaround)
+func (s *GameService) SetBotService(bs *BotService) {
+	s.botService = bs
 }
 
 func (s *GameService) loadActiveGames() {
@@ -425,6 +432,52 @@ func (s *GameService) JoinGame(code string, user *domain.User) (*domain.GameStat
 	return game, nil
 }
 
+func (s *GameService) AddBot(gameID string, personalityID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	game, ok := s.games[gameID]
+	if !ok {
+		return errors.New("game not found")
+	}
+
+	if game.Status != domain.GameStatusWaiting {
+		return errors.New("cannot add bot to active game")
+	}
+
+	profile := domain.GetBotProfile(personalityID)
+	botID := "BOT_" + generateGameCode() // simple unique id
+
+	// Pick color
+	colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
+	assignedColor := "GRAY"
+	usedColors := make(map[string]bool)
+	for _, p := range game.Players {
+		usedColors[p.TokenColor] = true
+	}
+	for _, c := range colors {
+		if !usedColors[c] {
+			assignedColor = c
+			break
+		}
+	}
+
+	game.Players = append(game.Players, &domain.PlayerState{
+		UserID:           botID,
+		Name:             "[BOT] " + profile.Name,
+		Balance:          1500,
+		Position:         0,
+		TokenColor:       assignedColor,
+		IsActive:         true,
+		IsBot:            true,
+		BotPersonalityID: personalityID,
+	})
+
+	s.addLog(game, "Se ha unido el bot "+profile.Name, "INFO")
+	s.broadcastGameState(game)
+	return nil
+}
+
 // HandleAction processes WebSocket messages
 func (s *GameService) HandleAction(gameID string, userID string, message []byte) {
 	var action struct {
@@ -491,7 +544,64 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleUnmortgageProperty(game, userID, action.Payload)
 	case "SELL_PROPERTY":
 		s.handleSellProperty(game, userID, action.Payload)
+	case "ADD_BOT":
+		s.handleAddBot(game, userID, action.Payload)
+	case "DECLARE_BANKRUPTCY":
+		s.handleDeclareBankruptcy(game, userID)
 	}
+}
+
+func (s *GameService) handleAddBot(game *domain.GameState, userID string, payload json.RawMessage) {
+	// Only host can add bots
+	if game.Players[0].UserID != userID {
+		return
+	}
+	var req struct {
+		PersonalityID string `json:"personality_id"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return
+	}
+	// We call the method we just added (but we need to unlock first because AddBot locks)
+	// Actually HandleAction locks. So we should NOT call AddBot public method which locks.
+	// We need internal logic or refactor.
+	// Best approach: Inline the logic here since we already have the lock, OR make internal addBot without lock.
+	// Refactoring AddBot to use internal helpers is safer but for speed I will inline internal logic here.
+
+	if game.Status != domain.GameStatusWaiting {
+		return
+	}
+
+	profile := domain.GetBotProfile(req.PersonalityID)
+	botID := "BOT_" + generateGameCode()
+
+	// Pick color logic (simplified copy)
+	colors := []string{"RED", "BLUE", "GREEN", "YELLOW", "PURPLE", "ORANGE", "CYAN", "PINK"}
+	assignedColor := "GRAY"
+	usedColors := make(map[string]bool)
+	for _, p := range game.Players {
+		usedColors[p.TokenColor] = true
+	}
+	for _, c := range colors {
+		if !usedColors[c] {
+			assignedColor = c
+			break
+		}
+	}
+
+	game.Players = append(game.Players, &domain.PlayerState{
+		UserID:           botID,
+		Name:             "[BOT] " + profile.Name,
+		Balance:          1500,
+		Position:         0,
+		TokenColor:       assignedColor,
+		IsActive:         true,
+		IsBot:            true,
+		BotPersonalityID: req.PersonalityID,
+	})
+
+	s.addLog(game, "Se ha unido el bot "+profile.Name, "INFO")
+	s.broadcastGameState(game)
 }
 
 func (s *GameService) handleFinalizeAuction(game *domain.GameState) {
@@ -527,13 +637,14 @@ func (s *GameService) handleStartAuction(game *domain.GameState, userID string, 
 	// Validation: Verify property is not owned (omitted for speed, trusting frontend/rules for now)
 
 	game.ActiveAuction = &domain.AuctionState{
-		PropertyID:  req.PropertyID,
-		HighestBid:  10, // Starting bid?
-		BidderID:    "",
-		BidderName:  "No bids",
-		EndTime:     time.Now().Add(30 * time.Second), // 30s auction
-		LastBidTime: time.Now().Unix(),
-		IsActive:    true,
+		PropertyID:    req.PropertyID,
+		HighestBid:    10, // Starting bid?
+		BidderID:      "",
+		BidderName:    "No bids",
+		EndTime:       time.Now().Add(30 * time.Second), // 30s auction
+		LastBidTime:   time.Now().Unix(),
+		IsActive:      true,
+		PassedPlayers: make(map[string]bool),
 	}
 	game.LastAction = "Subasta iniciada por " + req.PropertyID
 	s.addLog(game, "Subasta iniciada por "+req.PropertyID, "INFO")
@@ -584,10 +695,23 @@ func (s *GameService) handleBid(game *domain.GameState, userID string, payload j
 	// Anti-sniping: extend if < 10s left
 	timeLeft := time.Until(game.ActiveAuction.EndTime)
 	if timeLeft < 10*time.Second {
-		game.ActiveAuction.EndTime = game.ActiveAuction.EndTime.Add(10 * time.Second)
+		game.ActiveAuction.EndTime = time.Now().Add(10 * time.Second) // Extend time
 	}
 
 	s.addLog(game, bidderName+" ha pujado $"+strconv.Itoa(req.Amount), "INFO")
+	s.broadcastGameState(game)
+}
+
+func (s *GameService) handlePassAuction(game *domain.GameState, userID string) {
+	if game.ActiveAuction == nil || !game.ActiveAuction.IsActive {
+		return
+	}
+	if game.ActiveAuction.PassedPlayers == nil {
+		game.ActiveAuction.PassedPlayers = make(map[string]bool)
+	}
+	game.ActiveAuction.PassedPlayers[userID] = true
+	s.addLog(game, "Jugador ha pasado en la subasta.", "INFO")
+	// Check if only 1 player remaining? Not implementing complex logic yet.
 	s.broadcastGameState(game)
 }
 
@@ -727,7 +851,6 @@ func (s *GameService) handleDrawCard(game *domain.GameState, userID string) {
 			s.addLog(game, "Avanzó a la última casilla", "action")
 		} else if target == "av-ossa" {
 			// Need precise index lookup. For now, approximate or skip if logic not ready.
-			// Assuming "av-ossa" is at specific index.
 			// I don't have map String->Index loaded in memory efficiently (only Index->ID).
 			// Will check boardLayout values if PropertyID matches?
 			// Too complex for this snippet. Just logging support needed.
@@ -798,6 +921,14 @@ func (s *GameService) endAuction(game *domain.GameState) {
 		// Assign Property
 		game.PropertyOwnership[game.ActiveAuction.PropertyID] = winnerID
 
+		// Update Board
+		for i := range game.Board {
+			if game.Board[i].PropertyID == game.ActiveAuction.PropertyID {
+				game.Board[i].OwnerID = &winnerID
+				break
+			}
+		}
+
 		game.LastAction = "¡Subasta finalizada! Ganador: " + game.ActiveAuction.BidderName
 		s.addLog(game, "¡Subasta finalizada! Ganador: "+game.ActiveAuction.BidderName+" por $"+strconv.Itoa(int(amount)), "SUCCESS")
 	} else {
@@ -845,9 +976,13 @@ func (s *GameService) handleBuyProperty(game *domain.GameState, userID string, p
 	game.LastAction = player.Name + " compró " + prop.Name + " por $" + strconv.Itoa(prop.Price)
 	s.addLog(game, player.Name+" compró "+prop.Name+" por $"+strconv.Itoa(prop.Price), "SUCCESS")
 
-	// 3. Update Board UI (optional, if Board stores ownership too)
-	// We need to map PropertyID to Tile Index if we want to show it on board array
-	// For now, Frontend can look up PropertyOwnership map.
+	// 3. Update Board
+	for i := range game.Board {
+		if game.Board[i].PropertyID == req.PropertyID {
+			game.Board[i].OwnerID = &userID
+			break
+		}
+	}
 
 	s.broadcastGameState(game)
 }
@@ -1225,6 +1360,44 @@ func (s *GameService) handleRollDice(game *domain.GameState, userID string) {
 	s.broadcastGameState(game)
 }
 
+func (s *GameService) handleDeclareBankruptcy(game *domain.GameState, userID string) {
+	var player *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			player = p
+			break
+		}
+	}
+
+	if player == nil || !player.IsActive {
+		return
+	}
+
+	player.IsActive = false
+	s.addLog(game, player.Name+" se ha declarado en BANCARROTA.", "ALERT")
+
+	// Reset Assets
+	for i := range game.Board {
+		tile := &game.Board[i]
+		if tile.OwnerID != nil && *tile.OwnerID == userID {
+			tile.OwnerID = nil
+			tile.IsMortgaged = false
+			tile.BuildingCount = 0
+			// Clear ownership map reference if strictly needed, but board is truth
+			if tile.PropertyID != "" {
+				delete(game.PropertyOwnership, tile.PropertyID)
+			}
+		}
+	}
+
+	// If it was their turn, pass it
+	if game.CurrentTurnID == userID {
+		s.handleEndTurn(game, userID)
+	} else {
+		s.broadcastGameState(game)
+	}
+}
+
 func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 	if game.Status != domain.GameStatusActive || game.CurrentTurnID != userID {
 		return
@@ -1241,6 +1414,7 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 		game.TurnOrder = currentOrder
 	}
 
+	// Find current index
 	for i, uid := range currentOrder {
 		if uid == userID {
 			idx = i
@@ -1249,22 +1423,45 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 	}
 
 	if idx != -1 {
-		nextIdx := (idx + 1) % len(currentOrder)
-		game.CurrentTurnID = currentOrder[nextIdx]
+		// Find next ACTIVE player
+		nextIdx := idx
+		attempts := 0
+		found := false
 
-		// Find Next Player Name
-		var nextName string
-		for _, p := range game.Players {
-			if p.UserID == game.CurrentTurnID {
-				nextName = p.Name
+		for attempts < len(currentOrder) {
+			nextIdx = (nextIdx + 1) % len(currentOrder)
+			nextUID := currentOrder[nextIdx]
+
+			// Check if active
+			var pState *domain.PlayerState
+			for _, p := range game.Players {
+				if p.UserID == nextUID {
+					pState = p
+					break
+				}
+			}
+
+			if pState != nil && pState.IsActive {
+				game.CurrentTurnID = nextUID
+				s.addLog(game, "El turno pasa a "+pState.Name, "INFO")
+				found = true
 				break
 			}
+			attempts++
 		}
-		s.addLog(game, "El turno pasa a "+nextName, "INFO")
+
+		if !found {
+			// Solitare or everyone bankrupt?
+			s.addLog(game, "No hay más jugadores activos.", "ALERT")
+		}
 	}
 
-	// Clear Dice for next player
+	// Clear Dice due to end turn
 	game.Dice = [2]int{0, 0}
+
+	// Clear temporary turn state
+	game.DrawnCard = nil
+	game.PendingRent = nil
 	game.DrawnCard = nil
 	// Rent Forfeit Rule: If not collected by end of turn, it is lost.
 	if game.PendingRent != nil {
@@ -1442,6 +1639,216 @@ func (s *GameService) broadcastGameState(game *domain.GameState) {
 	s.hub.Broadcast <- &websocket.BroadcastMessage{
 		GameID:  game.GameID,
 		Payload: data,
+	}
+
+	// AFTER broadcast, check if next action implies a bot move
+	go s.checkBotTurn(game)
+}
+
+func (s *GameService) checkBotTurn(game *domain.GameState) {
+	if s.botService == nil {
+		return
+	}
+
+	// 1. Check for ROLLING_ORDER Phase
+	s.mu.RLock()
+	status := game.Status
+	gameID := game.GameID
+	s.mu.RUnlock()
+
+	if status == domain.GameStatusRollingOrder {
+		// Handle Bot Order Rolls
+		// We do this asynchronously to not block
+		// We find the first bot that hasn't rolled and roll for them.
+		// The broadcast will trigger the next one.
+		go func() {
+			time.Sleep(1 * time.Second) // Delay for realism
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			// Re-fetch game safely
+			g, ok := s.games[gameID]
+			if !ok || g.Status != domain.GameStatusRollingOrder {
+				return
+			}
+
+			// Find a bot that needs to roll
+			for _, p := range g.Players {
+				if p.IsBot {
+					if _, hasRolled := g.OrderRolls[p.UserID]; !hasRolled {
+						// Execute Roll Order
+						// Note: handleRollOrder expects caller to hold lock?
+						// Let's verify. handleRollOrder modifies state and calls broadcast.
+						// broadcast spawns checkBotTurn.
+						// It does NOT lock itself. Safe to call under lock.
+						s.handleRollOrder(g, p.UserID)
+						return // Only one at a time
+					}
+				}
+			}
+		}()
+		return
+	}
+
+	// 1.5 Check for AUCTION Phase
+	s.mu.RLock()
+	hasActiveAuction := game.ActiveAuction != nil && game.ActiveAuction.IsActive
+	s.mu.RUnlock()
+
+	if hasActiveAuction {
+		go func() {
+			time.Sleep(2 * time.Second) // Delay for thinking
+
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			// Re-fetch game state safely inside the goroutine
+			g, ok := s.games[gameID]
+			if !ok || g.ActiveAuction == nil || !g.ActiveAuction.IsActive {
+				return
+			}
+
+			// Find a bot that is NOT the current bidder and wants to bid
+			var botToAct *domain.PlayerState
+			for _, p := range g.Players {
+				if p.IsBot && p.UserID != g.ActiveAuction.BidderID {
+					// Check if this bot has already passed on this auction
+					if _, passed := g.ActiveAuction.PassedPlayers[p.UserID]; !passed {
+						botToAct = p
+						break // Only one bot acts per cycle
+					}
+				}
+			}
+
+			if botToAct != nil {
+				// We need to release the lock before calling executeBotTurn
+				// because executeBotTurn will acquire its own lock.
+				// However, since we are deferring Unlock, we can't manually unlock here.
+				// The safest way is to pass a copy of the bot's state or just its ID,
+				// and let executeBotTurn fetch the full player state under its own lock.
+				// For now, executeBotTurn takes *domain.PlayerState, so we pass the pointer.
+				// The `executeBotTurn` function itself re-fetches the game state and then
+				// uses the passed `bot` pointer for `bot.Name`, `bot.UserID`, etc.
+				// This is safe as long as `executeBotTurn` doesn't modify the `bot` object directly
+				// without holding a lock on the game state.
+				// The current `executeBotTurn` implementation does not modify the `bot` object directly.
+
+				// Create a copy of the bot's state to avoid race conditions if the original
+				// player state in `g.Players` is modified while `executeBotTurn` is running.
+				botCopy := *botToAct
+				s.mu.Unlock() // Manually unlock before calling executeBotTurn
+				s.executeBotTurn(gameID, &botCopy)
+				s.mu.Lock() // Re-acquire lock before defer unlocks it
+			}
+		}()
+		return
+	}
+
+	// 2. Normal Turn Logic
+	s.mu.RLock()
+	currentPlayerID := game.CurrentTurnID
+	// ... existing logic ...
+	var currentPlayer *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == currentPlayerID {
+			currentPlayer = p
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if currentPlayer == nil || !currentPlayer.IsBot {
+		return
+	}
+
+	// It is a bot's turn. Wait a bit to simulate thinking/animation
+	time.Sleep(2 * time.Second)
+
+	s.executeBotTurn(game.GameID, currentPlayer)
+}
+
+func (s *GameService) executeBotTurn(gameID string, bot *domain.PlayerState) {
+	s.mu.Lock()
+	game, ok := s.games[gameID]
+	s.mu.Unlock() // Unlock to allow bot service to think without blocking?
+	// actually bot service is just reading.
+	// We need to pass a SNAPSHOT or lock inside.
+	// BotService.GenerateDecision takes *GameState. Cleanest is to pass the pointer but be careful.
+	// Since GenerateDecision is read-only on GameState, it should be fine if we RLock inside or just copy.
+	// For MVP, we pass the game pointer.
+
+	if !ok {
+		return
+	}
+
+	action, err := s.botService.GenerateDecision(game, bot)
+	if err != nil {
+		log.Printf("Bot generation error: %v", err)
+		// Fallback: End Turn or Roll Dice if stuck
+		// To avoid infinite loops, just do nothing or force end?
+		return
+	}
+
+	log.Printf("BOT ACTION [%s]: %s (%s)", bot.Name, action.Action, action.Reason)
+
+	// Execute Action
+	// We reuse existing handlers, but they expect JSON payloads.
+	// We can refactor handlers to accept structs or just marshal payload.
+
+	switch action.Action {
+	case "ROLL_DICE":
+		s.handleRollDice(game, bot.UserID)
+	case "END_TURN":
+		s.handleEndTurn(game, bot.UserID)
+	case "BUY_PROPERTY":
+		// Payload: { "property_id": "..." }
+		// But in our current HandleBuyProperty logic, we usually infer property from position?
+		// Let's check handleBuyProperty signature.
+		// It takes payload used to confirm ID?
+		// handleBuyProperty impl:
+		// var req struct { PropertyID string } ...
+		// if req.PropertyID != currentTile.PropertyID => error.
+		// So we construct payload.
+		currentTile := s.boardLayout[bot.Position] // ID
+		// Actually boardLayout value is PropertyID or Type.
+		// Better get tile object.
+		// Let's just build payload conformant to API.
+		// We found the property at bot position.
+		payload := fmt.Sprintf(`{"property_id": "%s"}`, currentTile)
+		s.handleBuyProperty(game, bot.UserID, json.RawMessage(payload))
+
+	case "START_AUCTION":
+		// payload: { "property_id": "..." }
+		currentTile := s.boardLayout[bot.Position]
+		payload := fmt.Sprintf(`{"property_id": "%s"}`, currentTile)
+		s.handleStartAuction(game, bot.UserID, json.RawMessage(payload))
+
+	case "DRAW_CARD":
+		s.handleDrawCard(game, bot.UserID)
+
+	case "COLLECT_RENT":
+		s.handleCollectRent(game, bot.UserID)
+
+	case "DECLARE_BANKRUPTCY":
+		s.handleDeclareBankruptcy(game, bot.UserID)
+
+	case "BID":
+		// payload: { "amount": 123 }
+		payload := fmt.Sprintf(`{"amount": %d}`, action.Amount)
+		s.handleBid(game, bot.UserID, json.RawMessage(payload))
+
+	case "PASS_AUCTION":
+		s.handlePassAuction(game, bot.UserID)
+
+	case "BUY_BUILDING":
+		s.handleBuyBuilding(game, bot.UserID, action.Payload)
+
+	case "SELL_BUILDING":
+		// Payload should contain property_id
+		s.handleSellBuilding(game, bot.UserID, action.Payload)
+
+	case "MORTGAGE_PROPERTY":
+		s.handleMortgageProperty(game, bot.UserID, action.Payload)
 	}
 }
 

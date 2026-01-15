@@ -61,6 +61,10 @@ func main() {
 	}
 	advisorService := service.NewAdvisorService(gameService, llmEndpoint)
 
+	// Bot Service (AI Players)
+	botService := service.NewBotService(gameService, advisorService, llmEndpoint)
+	gameService.SetBotService(botService)
+
 	// Router
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

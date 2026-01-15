@@ -63,16 +63,18 @@ type TradeOffer struct {
 }
 
 type PlayerState struct {
-	UserID     string         `json:"user_id"`
-	Name       string         `json:"name"`
-	TokenColor string         `json:"token_color"`
-	Balance    int            `json:"balance"`
-	Position   int            `json:"position"` // 0-63 (assuming 17x17 board loop)
-	InJail     bool           `json:"in_jail"`
-	IsActive   bool           `json:"is_active"`
-	Loan       int            `json:"loan"`
-	Credit     *CreditProfile `json:"credit,omitempty"`
-	TileVisits map[int]int    `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
+	UserID           string         `json:"user_id"`
+	Name             string         `json:"name"`
+	TokenColor       string         `json:"token_color"`
+	Balance          int            `json:"balance"`
+	Position         int            `json:"position"` // 0-63 (assuming 17x17 board loop)
+	InJail           bool           `json:"in_jail"`
+	IsActive         bool           `json:"is_active"`
+	Loan             int            `json:"loan"`
+	Credit           *CreditProfile `json:"credit,omitempty"`
+	TileVisits       map[int]int    `json:"tile_visits"` // TileIndex -> VisitCount for personal heatmap
+	IsBot            bool           `json:"is_bot"`
+	BotPersonalityID string         `json:"bot_personality_id,omitempty"`
 }
 
 // CreditProfile tracks a player's credit history for dynamic interest rates

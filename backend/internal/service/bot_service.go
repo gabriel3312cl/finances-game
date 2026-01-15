@@ -1,0 +1,341 @@
+package service
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gabriel3312cl/finances-game/backend/internal/domain"
+)
+
+type BotService struct {
+	gameService    *GameService
+	advisorService *AdvisorService // Reusing prompt builders if possible, or just similar logic
+	llmEndpoint    string
+	httpClient     *http.Client
+}
+
+func NewBotService(gameService *GameService, advisorService *AdvisorService, llmEndpoint string) *BotService {
+	return &BotService{
+		gameService:    gameService,
+		advisorService: advisorService,
+		llmEndpoint:    llmEndpoint,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// GenerateDecision asks the LLM for the next move
+func (s *BotService) GenerateDecision(game *domain.GameState, botPlayer *domain.PlayerState) (*domain.BotAction, error) {
+	// Check Strategy
+	profile := domain.GetBotProfile(botPlayer.BotPersonalityID)
+	if profile.Strategy == "HEURISTIC" {
+		return s.generateHeuristicDecision(game, botPlayer)
+	}
+
+	// 1. Build Prompt
+	prompt := s.buildRefinedBotPrompt(game, botPlayer)
+	// log.Printf("[BOT %s] Prompt generated: %s", botPlayer.Name, prompt)
+
+	// 2. Call LLM
+	messages := []ChatMessage{
+		{Role: "system", Content: prompt},
+		{Role: "user", Content: "Es tu turno. Analiza la situación y decide tu próxima acción. Responde SOLO con el JSON."},
+	}
+
+	llmReq := LLMRequest{
+		Model:       "local-model",
+		Messages:    messages,
+		Temperature: 0.7, // Higher temp for personality variance
+		MaxTokens:   500,
+		Stream:      false,
+	}
+
+	responseStr, err := s.callLLM(llmReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Parse JSON
+	// Clean markdown code blocks if present
+	cleanJSON := strings.TrimSpace(responseStr)
+	if strings.HasPrefix(cleanJSON, "```json") {
+		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
+		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	} else if strings.HasPrefix(cleanJSON, "```") {
+		cleanJSON = strings.TrimPrefix(cleanJSON, "```")
+		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	}
+	cleanJSON = strings.TrimSpace(cleanJSON)
+
+	var action domain.BotAction
+	if err := json.Unmarshal([]byte(cleanJSON), &action); err != nil {
+		return nil, fmt.Errorf("failed to parse bot JSON: %w (Response: %s)", err, cleanJSON)
+	}
+
+	return &action, nil
+}
+
+func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *domain.PlayerState) (*domain.BotAction, error) {
+	// 0. Check for Bankruptcy condition
+	// 0. Check for Bankruptcy condition
+	if bot.Balance < 0 {
+		// Crisis Management: Try to liquidate assets
+		// 1. Sell Hotels/Houses
+		for _, t := range game.Board {
+			if t.OwnerID != nil && *t.OwnerID == bot.UserID && t.BuildingCount > 0 {
+				return &domain.BotAction{Action: "SELL_BUILDING", Payload: json.RawMessage(fmt.Sprintf(`{"property_id": "%s"}`, t.PropertyID)), Reason: "Necesito liquidez"}, nil
+			}
+		}
+		// 2. Mortgage Properties
+		for _, t := range game.Board {
+			if t.Type == "PROPERTY" || t.Type == "UTILITY" || t.Type == "RAILROAD" {
+				if t.OwnerID != nil && *t.OwnerID == bot.UserID && !t.IsMortgaged {
+					return &domain.BotAction{Action: "MORTGAGE_PROPERTY", Payload: json.RawMessage(fmt.Sprintf(`{"property_id": "%s"}`, t.PropertyID)), Reason: "Necesito liquidez"}, nil
+				}
+			}
+		}
+
+		// 3. If no assets left, surrender
+		return &domain.BotAction{Action: "DECLARE_BANKRUPTCY", Reason: "No tengo fondos para continuar."}, nil
+	}
+
+	// Simple Logic:
+	// 1. Roll if not rolled
+	if game.CurrentTurnID == bot.UserID {
+		if game.Status == domain.GameStatusActive {
+			if game.Dice[0] == 0 {
+				return &domain.BotAction{Action: "ROLL_DICE", Reason: "Turno: Tirar dados"}, nil
+			} else {
+				// Landed
+				currentTile := s.getTile(game, bot.Position)
+
+				// 2. Events that must be handled before END_TURN
+
+				// A. Collect Rent?
+				if game.PendingRent != nil && game.PendingRent.CreditorID == bot.UserID {
+					return &domain.BotAction{Action: "COLLECT_RENT", Reason: "Debo cobrar mi renta"}, nil
+				}
+
+				// B. Draw Card?
+				if (currentTile.Type == "CHANCE" || currentTile.Type == "COMMUNITY") && game.DrawnCard == nil {
+					return &domain.BotAction{Action: "DRAW_CARD", Reason: "Casilla de suerte/comunidad"}, nil
+				}
+
+				// C. Buy Property
+				if currentTile.Type == "PROPERTY" || currentTile.Type == "UTILITY" || currentTile.Type == "RAILROAD" {
+					if currentTile.OwnerID == nil {
+						// Logic: Buy if have money > price
+						if bot.Balance >= currentTile.Price {
+							return &domain.BotAction{Action: "BUY_PROPERTY", Reason: "Tengo dinero, compro."}, nil
+						} else {
+							// Auction
+							return &domain.BotAction{Action: "START_AUCTION", Reason: "No tengo dinero."}, nil
+						}
+					}
+				}
+
+				// D. End Turn
+				// Only if no pending rent for others? (Wait logic implied if I am the target, handled by auto-pay possibly? or just blocked)
+				// If I am target of rent, I can't END_TURN until paid. But heuristic usually handles active actions.
+				// Assuming auto-pay or separate handler for "PAY_RENT". For now, END_TURN.
+				return &domain.BotAction{Action: "END_TURN", Reason: "Fin de turno"}, nil
+			}
+		}
+	} else if game.ActiveAuction != nil && game.ActiveAuction.IsActive {
+		// Auction Logic
+		limit := 500 // Hardcoded limit for now
+		if bot.Balance < limit {
+			limit = bot.Balance
+		}
+
+		minBid := game.ActiveAuction.HighestBid + 10
+		if minBid <= limit {
+			return &domain.BotAction{Action: "BID", Amount: minBid, Reason: "Pugna automática"}, nil
+		}
+		return &domain.BotAction{Action: "PASS_AUCTION", Reason: "Muy caro"}, nil
+	}
+
+	// 3. Optional: Construction Phase (Buy Buildings)
+	// Check if we own any full Monopoly and have surplus cash
+	// Only try this if no other mandatory action is pending (i.e., we are about to end turn or roll)
+	// But wait, if we are in "Status Active" and "Dice != 0", we are in post-roll phase.
+	// We can choose to BUY_BUILDING instead of END_TURN.
+	if game.CurrentTurnID == bot.UserID && game.Status == domain.GameStatusActive && game.Dice[0] != 0 {
+		if bot.Balance > 500 { // Only build if rich
+			for _, t := range game.Board {
+				if t.OwnerID != nil && *t.OwnerID == bot.UserID && t.GroupIdentifier != "" && !t.IsMortgaged {
+					// Check if full group owned
+					allOwned := true
+					minBuild := 10 // Start high
+					for _, other := range game.Board {
+						if other.GroupIdentifier == t.GroupIdentifier {
+							if other.OwnerID == nil || *other.OwnerID != bot.UserID {
+								allOwned = false
+								break
+							}
+							if other.BuildingCount < minBuild {
+								minBuild = other.BuildingCount
+							}
+						}
+					}
+
+					if allOwned {
+						// Check "Even Build" rule: We can build on 't' if t.BuildingCount == minBuild
+						// And limit < 5
+						if t.BuildingCount == minBuild && t.BuildingCount < 5 {
+							cost := t.HouseCost
+							if t.BuildingCount == 4 {
+								cost = t.HotelCost
+							} // Assuming same
+
+							if bot.Balance > cost+200 { // Keep safety buffer
+								return &domain.BotAction{Action: "BUY_BUILDING", Payload: json.RawMessage(fmt.Sprintf(`{"property_id": "%s"}`, t.PropertyID)), Reason: "Inversión en casas"}, nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no heuristic action found")
+}
+
+func (s *BotService) buildRefinedBotPrompt(game *domain.GameState, bot *domain.PlayerState) string {
+	profile := domain.GetBotProfile(bot.BotPersonalityID)
+	// Reutilizamos la info base del Advisor, pero le damos estructura estricta
+	baseInfo := s.advisorService.buildSystemPrompt(game, bot.UserID)
+
+	var sb strings.Builder
+	sb.WriteString("Eres una IA jugando al Monopoly. Tu nombre es '" + bot.Name + "'.\n")
+	sb.WriteString("PERSONALIDAD: " + profile.Description + "\n")
+	sb.WriteString(fmt.Sprintf("FACTORES: Tolerancia Riesgo=%.1f, Agresividad=%.1f, Negociación=%.1f\n\n",
+		profile.RiskTolerance, profile.Aggression, profile.NegotiationSkill))
+
+	sb.WriteString("=== ESTADO DEL JUEGO ===\n")
+	sb.WriteString(baseInfo)
+
+	sb.WriteString("\n=== TUS POSIBLES ACCIONES ===\n")
+	sb.WriteString("Debes elegir UNA acción válida. Responde estricamente en formato JSON.\n")
+	sb.WriteString(`Formato: { "action": "ACTION_NAME", "payload": { ...params... }, "reason": "Breve justificación" }`)
+	sb.WriteString("\n\n")
+
+	// Filter valid actions based on game state
+	possibleActions := []string{}
+
+	if game.CurrentTurnID == bot.UserID {
+		// Detect Bankruptcy Scenario
+		if bot.Balance < 0 {
+			possibleActions = append(possibleActions, `{"action": "DECLARE_BANKRUPTCY", "reason": "Estoy en deuda y no puedo pagar"}`)
+			// Also suggest selling assets if implemented? For now just offer surrender.
+		}
+
+		// My Turn
+		if game.Status == domain.GameStatusActive {
+			// Check Phase
+			if game.Dice[0] == 0 {
+				possibleActions = append(possibleActions, `{"action": "ROLL_DICE", "reason": "Es mi turno y debo tirar"}`)
+			} else {
+				// Dice rolled, check events
+
+				// Pending Rent Collection
+				if game.PendingRent != nil && game.PendingRent.CreditorID == bot.UserID {
+					possibleActions = append(possibleActions, `{"action": "COLLECT_RENT", "reason": "Cobrar renta pendiente"}`)
+				} else {
+					// Landing checks
+					currentTile := s.getTile(game, bot.Position)
+
+					// Draw Card
+					if (currentTile.Type == "CHANCE" || currentTile.Type == "COMMUNITY") && game.DrawnCard == nil {
+						possibleActions = append(possibleActions, `{"action": "DRAW_CARD", "reason": "Tengo que sacar carta"}`)
+					}
+
+					if currentTile.Type == "PROPERTY" && currentTile.OwnerID == nil {
+						if bot.Balance >= currentTile.Price {
+							possibleActions = append(possibleActions, `{"action": "BUY_PROPERTY", "reason": "Tengo dinero y quiero invertir"}`)
+						} else {
+							possibleActions = append(possibleActions, `{"action": "START_AUCTION", "reason": "No me alcanza el dinero"}`)
+						}
+						possibleActions = append(possibleActions, `{"action": "START_AUCTION", "reason": "Es muy cara o no me interesa"}`)
+					} else {
+						possibleActions = append(possibleActions, `{"action": "END_TURN", "reason": "Ya no hay nada que hacer"}`)
+					}
+				}
+			}
+		}
+	} else if game.ActiveAuction != nil && game.ActiveAuction.IsActive {
+		// Auction Phase
+		minBid := game.ActiveAuction.HighestBid + 10
+		if bot.Balance >= minBid {
+			possibleActions = append(possibleActions, fmt.Sprintf(`{"action": "BID", "amount": %d, "reason": "Quiero ganar esta propiedad"}`, minBid))
+		}
+		if game.ActiveAuction.BidderID != bot.UserID {
+			// Only pass if not winning
+			possibleActions = append(possibleActions, `{"action": "PASS_AUCTION", "reason": "Muy caro para mi"}`)
+		}
+	}
+
+	sb.WriteString("Opciones sugeridas (no limitativas, pero PRIORIZA estas si son validas):\n")
+	for _, act := range possibleActions {
+		sb.WriteString("- " + act + "\n")
+	}
+
+	return sb.String()
+}
+
+// Helper to get tile safely
+func (s *BotService) getTile(game *domain.GameState, pos int) domain.Tile {
+	for _, t := range game.Board {
+		if t.ID == pos {
+			return t
+		}
+	}
+	return domain.Tile{} // Should not happen
+}
+
+func (s *BotService) callLLM(req LLMRequest) (string, error) {
+	// Re-implementing callLLM to keep services decoupled enough or import from advisor if exported
+	// For now copy-paste logic as callLLM in Advisor is private, but I can make it public or just copy.
+	// Copying for stability.
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", s.llmEndpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("failed to call LLM: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("LLM returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var llmResp LLMResponse
+	if err := json.Unmarshal(body, &llmResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+	if len(llmResp.Choices) == 0 {
+		return "", fmt.Errorf("no response from LLM")
+	}
+
+	return llmResp.Choices[0].Message.Content, nil
+}

@@ -15,7 +15,7 @@ import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import DiceModal from './DiceModal';
 import { getToken, API_URL } from '@/lib/auth';
-import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
+import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemButton, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology, Stop, Style } from '@mui/icons-material';
 
 export default function GameBoard() {
@@ -101,6 +101,8 @@ export default function GameBoard() {
     const [diceModalOpen, setDiceModalOpen] = useState(false);
     const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
     const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [botDialogOpen, setBotDialogOpen] = useState(false);
+    const [selectedBotType, setSelectedBotType] = useState('balanced');
 
     // Animate token movement when dice modal closes
     const handleDiceModalClose = () => {
@@ -527,10 +529,62 @@ export default function GameBoard() {
                             </Box>
                         )}
 
-
+                        {/* Add Bot Button (Host only, Waiting) */}
+                        {isHost && gameState?.status === 'WAITING' && (
+                            <Button variant="outlined" color="secondary" onClick={() => setBotDialogOpen(true)}>
+                                AGREGAR BOT
+                            </Button>
+                        )}
                     </Box>
                 </Box>
             </Box>
+
+            {/* ADD BOT DIALOG */}
+            <Dialog open={botDialogOpen} onClose={() => setBotDialogOpen(false)} PaperProps={{ sx: { bgcolor: '#1e293b', color: 'white' } }}>
+                <DialogTitle>Agregar Jugador Bot</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="grey.400" sx={{ mb: 2 }}>
+                        Elige la personalidad del bot. Cada uno tiene estrategias y comportamientos de negociación diferentes.
+                    </Typography>
+                    <List sx={{ width: '100%', maxWidth: 360, bgcolor: 'background.paper', borderRadius: 1 }}>
+                        {[
+                            { id: 'classic', name: 'Bot Clásico (Rápido)', desc: 'Sin IA. Juega rápido y lógico.' },
+                            { id: 'balanced', name: 'Sr. Equilibrado (IA)', desc: 'Juega seguro.' },
+                            { id: 'tycoon', name: 'El Magnate (IA)', desc: 'Agresivo con monopolios.' },
+                            { id: 'saver', name: 'El Ahorrador (IA)', desc: 'Evita gastar.' },
+                            { id: 'speculator', name: 'El Especulador (IA)', desc: 'Le gustan las subastas.' }
+                        ].map((b) => (
+                            <ListItem key={b.id} disablePadding>
+                                <ListItemButton
+                                    selected={selectedBotType === b.id}
+                                    onClick={() => setSelectedBotType(b.id)}
+                                    sx={{
+                                        '&.Mui-selected': { bgcolor: 'primary.dark' },
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+                                    }}
+                                >
+                                    <ListItemText
+                                        primary={b.name}
+                                        secondary={b.desc}
+                                        primaryTypographyProps={{ color: 'white', fontWeight: 'bold' }}
+                                        secondaryTypographyProps={{ color: 'grey.400' }}
+                                    />
+                                    {selectedBotType === b.id && <CheckCircle color="primary" />}
+                                </ListItemButton>
+                            </ListItem>
+                        ))}
+                    </List>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 1 }}>
+                        <Button color="inherit" onClick={() => setBotDialogOpen(false)}>Cancelar</Button>
+                        <Button variant="contained" color="secondary" onClick={() => {
+                            sendMessage('ADD_BOT', { personality_id: selectedBotType });
+                            setBotDialogOpen(false);
+                        }}>
+                            Agregar
+                        </Button>
+                    </Box>
+                </DialogContent>
+            </Dialog>
 
             {/* LOG CONSOLE */}
             <Paper sx={{ height: logHeight, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10, position: 'relative' }}>
@@ -734,6 +788,34 @@ export default function GameBoard() {
                                     onClick={() => sendMessage('ROLL_DICE', {})}
                                 >
                                     <Casino sx={{ color: 'white' }} />
+                                </Box>
+                            </Tooltip>
+                        )}
+
+                        {/* Declare Bankruptcy Button - Only if Balance negative */}
+                        {isGameActive && (myPlayer?.balance || 0) < 0 && (
+                            <Tooltip title="Declarar Bancarrota" placement="right">
+                                <Box sx={{
+                                    width: 56,
+                                    height: 56,
+                                    background: 'linear-gradient(135deg, #000 0%, #333 100%)',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 4px 20px rgba(0,0,0, 0.7)',
+                                    cursor: 'pointer',
+                                    border: '2px solid red',
+                                    transition: 'transform 0.2s',
+                                    '&:hover': { transform: 'scale(1.1)' }
+                                }}
+                                    onClick={() => {
+                                        if (window.confirm("¿Estás seguro de declarar BANCARROTA? Perderás todo y saldrás del juego.")) {
+                                            sendMessage('DECLARE_BANKRUPTCY', {});
+                                        }
+                                    }}
+                                >
+                                    <Stop sx={{ color: 'red' }} />
                                 </Box>
                             </Tooltip>
                         )}

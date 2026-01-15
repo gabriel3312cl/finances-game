@@ -44,6 +44,11 @@ func (r *GameRepository) Save(game *domain.GameState) error {
 	// 2. Sync Players
 	// We need to ensure players exist in game_players.
 	for _, p := range game.Players {
+		// Skip Bots for game_players table (which requires UUID user_id)
+		if p.IsBot {
+			continue
+		}
+
 		// Convert inventory to JSON (if used for cards)
 		// For now empty or whatever is in struct. But struct Inventory field?
 		// PlayerState doesn't explicit have Inventory field in the viewed struct (it has [], but check definitions).
@@ -76,7 +81,13 @@ func (r *GameRepository) Save(game *domain.GameState) error {
 		// We assume ownerID string IS the UUID.
 		var ownerUUID interface{} = nil
 		if ownerID != "" {
-			ownerUUID = ownerID
+			// If it's a BOT, we can't save it to the UUID column.
+			// Currently bots have IDs starting with "BOT_".
+			if len(ownerID) >= 4 && ownerID[:4] == "BOT_" {
+				ownerUUID = nil
+			} else {
+				ownerUUID = ownerID
+			}
 		}
 
 		// Upsert game_properties
