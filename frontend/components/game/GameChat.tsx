@@ -110,25 +110,25 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
 
     return (
         <>
-            {/* Chat FAB - No fixed position, will be placed by parent Stack */}
+            {/* Chat FAB - Same style as right-side FABs */}
             <Box
                 onClick={() => setIsOpen(!isOpen)}
                 sx={{
                     width: 56,
                     height: 56,
-                    background: isOpen ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    bgcolor: isOpen ? '#1e40af' : '#334155',
                     borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: isOpen ? '0 4px 20px rgba(239, 68, 68, 0.4)' : '0 4px 20px rgba(59, 130, 246, 0.4)',
+                    boxShadow: 6,
                     cursor: 'pointer',
                     transition: 'all 0.2s',
                     '&:hover': { transform: 'scale(1.1)' }
                 }}
             >
                 <Badge badgeContent={unreadCount} color="error">
-                    <Chat sx={{ color: 'white' }} />
+                    <Chat sx={{ color: isOpen ? 'white' : 'primary.main' }} />
                 </Badge>
             </Box>
 

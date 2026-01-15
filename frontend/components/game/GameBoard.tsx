@@ -850,18 +850,22 @@ export default function GameBoard() {
             <Box sx={{ position: 'fixed', bottom: logHeight + 20, left: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
                 <Stack direction="column" spacing={2}>
                     {/* Game Chat - Always at the top */}
-                    <GameChat
-                        messages={(gameState as any).chat_messages || []}
-                        players={(gameState?.players || []).map((p: any) => ({
-                            user_id: p.user_id,
-                            name: p.name,
-                            token_color: p.token_color,
-                            is_bot: p.is_bot || false
-                        }))}
-                        onSend={(message) => sendMessage('SEND_CHAT', { message })}
-                        currentUserId={user.user_id}
-                        logHeight={logHeight}
-                    />
+                    <Tooltip title="Chat" placement="right">
+                        <Box>
+                            <GameChat
+                                messages={(gameState as any).chat_messages || []}
+                                players={(gameState?.players || []).map((p: any) => ({
+                                    user_id: p.user_id,
+                                    name: p.name,
+                                    token_color: p.token_color,
+                                    is_bot: p.is_bot || false
+                                }))}
+                                onSend={(message) => sendMessage('SEND_CHAT', { message })}
+                                currentUserId={user.user_id}
+                                logHeight={logHeight}
+                            />
+                        </Box>
+                    </Tooltip>
 
                     {/* Game Actions - Only on my turn */}
                     {isGameActive && isMyTurn && (
