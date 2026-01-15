@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -67,7 +68,9 @@ func (s *BotService) GenerateDecision(game *domain.GameState, botPlayer *domain.
 	cleanJSON := cleanJSON(responseStr)
 
 	var action domain.BotAction
-	if err := json.Unmarshal([]byte(cleanJSON), &action); err != nil {
+	// Use Decoder to be more tolerant of trailing characters (like extra braces)
+	dec := json.NewDecoder(strings.NewReader(cleanJSON))
+	if err := dec.Decode(&action); err != nil {
 		return nil, fmt.Errorf("failed to parse bot JSON: %w (Response: %s)", err, cleanJSON)
 	}
 
@@ -108,26 +111,23 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 				// Landed - Check mandatory actions first
 				currentTile := s.getTile(game, bot.Position)
 
-				// A. Collect Rent?
-				if game.PendingRent != nil && game.PendingRent.CreditorID == bot.UserID {
-					return &domain.BotAction{Action: "COLLECT_RENT", Reason: "Debo cobrar mi renta"}, nil
-				}
+				// Rent is now automatic - no need to collect rent manually
 
 				// B. Draw Card?
 				if (currentTile.Type == "CHANCE" || currentTile.Type == "COMMUNITY") && game.DrawnCard == nil {
 					return &domain.BotAction{Action: "DRAW_CARD", Reason: "Casilla de suerte/comunidad"}, nil
 				}
 
-				// C. Buy Property
-				if currentTile.Type == "PROPERTY" || currentTile.Type == "UTILITY" || currentTile.Type == "RAILROAD" {
-					if currentTile.OwnerID == nil {
-						// Logic: Buy if have money > price
-						if bot.Balance >= currentTile.Price {
-							return &domain.BotAction{Action: "BUY_PROPERTY", Reason: "Tengo dinero, compro."}, nil
-						} else {
-							// Auction
-							return &domain.BotAction{Action: "START_AUCTION", Reason: "No tengo dinero."}, nil
-						}
+				// C. Buy Property - Check if tile is purchasable (has price) and unowned
+				if currentTile.Price > 0 && currentTile.OwnerID == nil {
+					log.Printf("Bot %s on purchasable tile %s (type=%s, price=%d, balance=%d)",
+						bot.Name, currentTile.Name, currentTile.Type, currentTile.Price, bot.Balance)
+					// Logic: Buy if have money >= price
+					if bot.Balance >= currentTile.Price {
+						return &domain.BotAction{Action: "BUY_PROPERTY", Reason: "Tengo dinero, compro."}, nil
+					} else {
+						// Auction
+						return &domain.BotAction{Action: "START_AUCTION", Reason: "No tengo dinero, inicio subasta."}, nil
 					}
 				}
 
@@ -245,23 +245,14 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 							return &domain.BotAction{
 								Action:  "INITIATE_TRADE",
 								Payload: json.RawMessage(payload),
-								Reason:  fmt.Sprintf("Quiero completar mi monopolio de %s", target.GroupIdentifier),
+								Reason:  fmt.Sprintf("Quiero completar mi monopolio de %s", target.GroupName),
 							}, nil
 						}
 					}
 				}
 
 				// F. End Turn
-				// If I am target of pending rent, I cannot end turn until it's collected
-				if game.PendingRent != nil && game.PendingRent.TargetID == bot.UserID {
-					// Proactively pay rent since backend now supports it
-					payload := fmt.Sprintf(`{"target_id":"%s","property_id":"%s"}`, game.PendingRent.TargetID, game.PendingRent.PropertyID)
-					return &domain.BotAction{
-						Action:  "PAY_RENT",
-						Payload: json.RawMessage(payload),
-						Reason:  "Debo pagar la renta para finalizar turno",
-					}, nil
-				}
+				// Rent is now automatic, no need to check for pending rent
 				return &domain.BotAction{Action: "END_TURN", Reason: "Fin de turno"}, nil
 			}
 		}
@@ -478,7 +469,7 @@ func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.Pl
 					}
 				}
 			}
-			gameContext.WriteString(fmt.Sprintf("- %s (%s): Dueño=%s, Precio=%d\n", t.Name, t.GroupIdentifier, owner, t.Price))
+			gameContext.WriteString(fmt.Sprintf("- %s (%s): Dueño=%s, Precio=%d\n", t.Name, t.GroupName, owner, t.Price))
 		}
 	}
 
