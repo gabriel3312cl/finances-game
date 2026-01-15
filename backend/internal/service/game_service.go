@@ -577,6 +577,8 @@ func (s *GameService) HandleAction(gameID string, userID string, message []byte)
 		s.handleDeclareBankruptcy(game, userID)
 	case "UPDATE_PLAYER_CONFIG":
 		s.handleUpdatePlayerConfig(game, userID, action.Payload)
+	case "SEND_CHAT":
+		s.handleSendChat(game, userID, action.Payload)
 	}
 }
 
@@ -1476,6 +1478,13 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 		return
 	}
 
+	// Block end turn if there's pending rent to be collected from this player
+	if game.PendingRent != nil && game.PendingRent.TargetID == userID {
+		s.addLog(game, "No puedes terminar tu turno hasta que te cobren la renta.", "ALERT")
+		s.broadcastGameState(game)
+		return
+	}
+
 	// Simple Next Turn Logic using TurnOrder if available, else standard order
 	idx := -1
 	currentOrder := game.TurnOrder
@@ -1534,13 +1543,7 @@ func (s *GameService) handleEndTurn(game *domain.GameState, userID string) {
 
 	// Clear temporary turn state
 	game.DrawnCard = nil
-	game.PendingRent = nil
-	game.DrawnCard = nil
-	// Rent Forfeit Rule: If not collected by end of turn, it is lost.
-	if game.PendingRent != nil {
-		s.addLog(game, "Renta no cobrada ha expirado.", "INFO")
-		game.PendingRent = nil
-	}
+	// NOTE: PendingRent is NOT cleared here - player cannot end turn until rent is collected
 
 	s.broadcastGameState(game)
 }
@@ -1817,6 +1820,42 @@ func (s *GameService) checkBotTurn(game *domain.GameState) {
 		return
 	}
 
+	// 1.6 Check for PENDING RENT that a bot creditor needs to collect
+	s.mu.RLock()
+	hasPendingRent := game.PendingRent != nil
+	var creditorBot *domain.PlayerState
+	if hasPendingRent {
+		for _, p := range game.Players {
+			if p.IsBot && p.UserID == game.PendingRent.CreditorID {
+				creditorBot = p
+				break
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if creditorBot != nil {
+		go func() {
+			time.Sleep(1 * time.Second) // Delay for realism
+
+			s.mu.Lock()
+			defer s.mu.Unlock()
+
+			// Re-fetch game safely
+			g, ok := s.games[gameID]
+			if !ok || g.PendingRent == nil {
+				return
+			}
+
+			// Double-check the creditor is still a bot and pending rent exists
+			if g.PendingRent.CreditorID == creditorBot.UserID {
+				log.Printf("Bot %s collecting rent from pending rent", creditorBot.Name)
+				s.handleCollectRent(g, creditorBot.UserID)
+			}
+		}()
+		return
+	}
+
 	// 2. Normal Turn Logic
 	s.mu.RLock()
 	currentPlayerID := game.CurrentTurnID
@@ -1863,6 +1902,9 @@ func (s *GameService) executeBotTurn(gameID string, bot *domain.PlayerState) {
 	}
 
 	log.Printf("BOT ACTION [%s]: %s (%s)", bot.Name, action.Action, action.Reason)
+
+	// Publish bot's thought to chat
+	s.addBotThought(game, bot, fmt.Sprintf("🤖 %s: %s", action.Action, action.Reason))
 
 	// Execute Action
 	// We reuse existing handlers, but they expect JSON payloads.
@@ -2008,6 +2050,15 @@ func (s *GameService) calculateRent(game *domain.GameState, tile *domain.Tile, d
 	ownerID, owned := game.PropertyOwnership[tile.PropertyID]
 	if !owned {
 		return 0
+	}
+
+	// PARK and ATTRACTION: Use RentBase if set, minimum $25
+	if tile.Type == "PARK" || tile.Type == "ATTRACTION" {
+		rent := tile.RentBase
+		if rent <= 0 {
+			rent = 25 // Minimum rent for parks/attractions
+		}
+		return rent
 	}
 
 	if tile.Type == "UTILITY" {
@@ -2571,4 +2622,60 @@ func (s *GameService) handleSellProperty(game *domain.GameState, userID string, 
 	s.addLog(game, player.Name+" vendió "+tile.Name+" al banco por $"+strconv.Itoa(salePrice), "ACTION")
 	s.saveGame(game)
 	s.broadcastGameState(game)
+}
+
+// handleSendChat processes chat messages from players
+func (s *GameService) handleSendChat(game *domain.GameState, userID string, payload json.RawMessage) {
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil || req.Message == "" {
+		return
+	}
+
+	// Find player
+	var player *domain.PlayerState
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			player = p
+			break
+		}
+	}
+	if player == nil {
+		return
+	}
+
+	// Create chat message
+	msg := domain.ChatMessage{
+		ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+		PlayerID:   userID,
+		PlayerName: player.Name,
+		Message:    req.Message,
+		Type:       "PLAYER",
+		Timestamp:  time.Now().Unix(),
+	}
+
+	// Keep only last 50 messages
+	game.ChatMessages = append(game.ChatMessages, msg)
+	if len(game.ChatMessages) > 50 {
+		game.ChatMessages = game.ChatMessages[len(game.ChatMessages)-50:]
+	}
+
+	s.broadcastGameState(game)
+}
+
+// addBotThought adds a bot's reasoning to the chat for other players to see
+func (s *GameService) addBotThought(game *domain.GameState, bot *domain.PlayerState, reason string) {
+	msg := domain.ChatMessage{
+		ID:         fmt.Sprintf("%d", time.Now().UnixNano()),
+		PlayerID:   bot.UserID,
+		PlayerName: bot.Name,
+		Message:    reason,
+		Type:       "BOT_THOUGHT",
+		Timestamp:  time.Now().Unix(),
+	}
+	game.ChatMessages = append(game.ChatMessages, msg)
+	if len(game.ChatMessages) > 50 {
+		game.ChatMessages = game.ChatMessages[len(game.ChatMessages)-50:]
+	}
 }

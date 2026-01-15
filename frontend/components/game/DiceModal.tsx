@@ -58,14 +58,15 @@ function Dice3D({ finalValue, delay = 0 }: { finalValue: number; delay?: number 
     const [rotation, setRotation] = useState({ x: 0, y: 0 });
 
     // Calculate final rotation based on target value
+    // The cube faces are: Front=1, Back=6, Right=2, Left=5, Top=3, Bottom=4
     const getFinalRotation = (value: number) => {
         const rotations: Record<number, { x: number; y: number }> = {
-            1: { x: 0, y: 0 },
-            2: { x: 0, y: 90 },
-            3: { x: -90, y: 0 },
-            4: { x: 90, y: 0 },
-            5: { x: 0, y: -90 },
-            6: { x: 180, y: 0 },
+            1: { x: 0, y: 0 },       // Front face (1) facing viewer
+            6: { x: 0, y: 180 },     // Back face (6) rotated to front
+            2: { x: 0, y: -90 },     // Right face (2) rotated to front
+            5: { x: 0, y: 90 },      // Left face (5) rotated to front
+            3: { x: 90, y: 0 },      // Top face (3) rotated to front
+            4: { x: -90, y: 0 },     // Bottom face (4) rotated to front
         };
         return rotations[value] || { x: 0, y: 0 };
     };

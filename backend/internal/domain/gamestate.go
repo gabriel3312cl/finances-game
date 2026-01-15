@@ -17,7 +17,8 @@ type GameState struct {
 	TurnOrder         []string          `json:"turn_order"`            // UserIDs in order
 	OrderRolls        map[string]int    `json:"order_rolls,omitempty"` // UserID -> dice roll for turn order
 	DrawnCard         *Card             `json:"drawn_card,omitempty"`
-	PendingRent       *PendingRent      `json:"pending_rent,omitempty"` // Manual rent collection
+	PendingRent       *PendingRent      `json:"pending_rent,omitempty"`  // Manual rent collection
+	ChatMessages      []ChatMessage     `json:"chat_messages,omitempty"` // In-game chat
 }
 
 type PendingRent struct {
@@ -25,6 +26,15 @@ type PendingRent struct {
 	CreditorID string `json:"creditor_id"` // The owner who needs to press collect
 	Amount     int    `json:"amount"`
 	PropertyID string `json:"property_id"`
+}
+
+type ChatMessage struct {
+	ID         string `json:"id"`
+	PlayerID   string `json:"player_id"`
+	PlayerName string `json:"player_name"`
+	Message    string `json:"message"`
+	Type       string `json:"type"` // PLAYER, BOT_THOUGHT, SYSTEM, TRADE
+	Timestamp  int64  `json:"timestamp"`
 }
 
 type Card struct {

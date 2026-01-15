@@ -141,9 +141,11 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 				}
 
 				// D. End Turn
-				// Only if no pending rent for others? (Wait logic implied if I am the target, handled by auto-pay possibly? or just blocked)
-				// If I am target of rent, I can't END_TURN until paid. But heuristic usually handles active actions.
-				// Assuming auto-pay or separate handler for "PAY_RENT". For now, END_TURN.
+				// If I am target of pending rent, I cannot end turn until it's collected
+				if game.PendingRent != nil && game.PendingRent.TargetID == bot.UserID {
+					// Wait for creditor to collect rent - do nothing this cycle
+					return &domain.BotAction{Action: "PASS", Reason: "Esperando a que me cobren la renta"}, nil
+				}
 				return &domain.BotAction{Action: "END_TURN", Reason: "Fin de turno"}, nil
 			}
 		}

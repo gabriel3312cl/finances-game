@@ -15,6 +15,7 @@ import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import DiceModal from './DiceModal';
 import LobbyCustomization from './LobbyCustomization';
+import GameChat from './GameChat';
 import { playSoundEffect } from './SoundManager';
 import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemButton, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
@@ -97,8 +98,7 @@ export default function GameBoard() {
     const [inventoryTargetId, setInventoryTargetId] = useState<string | null>(null);
     const [minimapLayer, setMinimapLayer] = useState<'group' | 'owner' | 'globalHeatmap'>('group');
     const [initialBalance, setInitialBalance] = useState(1500);
-    const [rentCountdown, setRentCountdown] = useState(0);
-    const pendingRentRef = useRef<string | null>(null);
+
     const [actionPending, setActionPending] = useState(false);
     const [diceModalOpen, setDiceModalOpen] = useState(false);
     const [animatedPositions, setAnimatedPositions] = useState<Record<string, number>>({});
@@ -120,13 +120,21 @@ export default function GameBoard() {
     const handleDiceModalClose = () => {
         setDiceModalOpen(false);
 
-        // Get the current player's final position and previous position
+        // Get the current player's final position and dice values
         const currentPlayer = gameState?.players?.find((p: any) => p.user_id === gameState?.current_turn_id);
         if (!currentPlayer) return;
 
         const finalPosition = currentPlayer.position;
         const diceTotal = (gameState?.dice?.[0] || 0) + (gameState?.dice?.[1] || 0);
-        const startPosition = (finalPosition - diceTotal + 64) % 64;
+
+        // Calculate actual start position (handling wraparound)
+        let startPosition = finalPosition - diceTotal;
+        if (startPosition < 0) {
+            startPosition = 64 + startPosition; // Correct negative wraparound
+        }
+
+        // Only animate if there's actual movement
+        if (diceTotal === 0) return;
 
         // Start animation from the start position
         let currentPos = startPosition;
@@ -137,16 +145,20 @@ export default function GameBoard() {
             clearInterval(animationIntervalRef.current);
         }
 
+        // Calculate number of steps to animate
+        let stepsRemaining = diceTotal;
+
         // Step through each position with 150ms delay
         animationIntervalRef.current = setInterval(() => {
             currentPos = (currentPos + 1) % 64;
+            stepsRemaining--;
             // Play Step Sound
             playSoundEffect('tap');
 
             setAnimatedPositions(prev => ({ ...prev, [currentPlayer.user_id]: currentPos }));
 
-            // Stop when we reach final position
-            if (currentPos === finalPosition) {
+            // Stop when we've animated all steps
+            if (stepsRemaining <= 0 || currentPos === finalPosition) {
                 if (animationIntervalRef.current) {
                     clearInterval(animationIntervalRef.current);
                     animationIntervalRef.current = null;
@@ -172,26 +184,7 @@ export default function GameBoard() {
         logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [gameState?.logs]);
 
-    // Rent Collection Countdown Timer
-    const pendingRent = (gameState as any)?.pending_rent;
-    useEffect(() => {
-        // Start countdown when new pending_rent appears
-        const currentPendingId = pendingRent?.property_id || null;
-        if (currentPendingId && currentPendingId !== pendingRentRef.current) {
-            pendingRentRef.current = currentPendingId;
-            setRentCountdown(10);
-        } else if (!currentPendingId) {
-            pendingRentRef.current = null;
-            setRentCountdown(0);
-        }
-    }, [pendingRent?.property_id]);
 
-    useEffect(() => {
-        if (rentCountdown > 0) {
-            const timer = setTimeout(() => setRentCountdown(rentCountdown - 1), 1000);
-            return () => clearTimeout(timer);
-        }
-    }, [rentCountdown]);
 
     // Derived States
     // Reset actionPending when game state changes (action completed)
@@ -210,6 +203,35 @@ export default function GameBoard() {
         }
         prevDiceRef.current = currentDice;
     }, [gameState?.dice]);
+
+    // Auto-open property modal when someone lands on my property (pending_rent where I am creditor)
+    const prevPendingRentRef = useRef<string | null>(null);
+    useEffect(() => {
+        const pendingRent = (gameState as any)?.pending_rent;
+        if (!pendingRent || !user?.user_id) {
+            prevPendingRentRef.current = null;
+            return;
+        }
+
+        // Check if this is a new pending_rent where I am the creditor
+        const rentKey = `${pendingRent.property_id}-${pendingRent.target_id}`;
+        if (pendingRent.creditor_id === user.user_id && rentKey !== prevPendingRentRef.current) {
+            prevPendingRentRef.current = rentKey;
+
+            // Check if no other modals are open
+            const hasModalOpen = isInventoryOpen || isTradeOpen || diceModalOpen || selectedTile !== null;
+
+            if (!hasModalOpen) {
+                // Find the tile data for this property
+                const tile = boardTiles.find(t => t.propertyId === pendingRent.property_id);
+                if (tile) {
+                    // Auto-open the tile detail modal
+                    setSelectedTile(tile);
+                    playSoundEffect('notification'); // Alert sound
+                }
+            }
+        }
+    }, [(gameState as any)?.pending_rent?.property_id, (gameState as any)?.pending_rent?.target_id, user?.user_id, isInventoryOpen, isTradeOpen, diceModalOpen, selectedTile, boardTiles]);
 
     // Idempotent action sender - prevents double-clicks, with timeout fallback
     const sendAction = (action: string, payload: any = {}) => {
@@ -234,8 +256,8 @@ export default function GameBoard() {
     // BUT we don't have that field yet. We will just trust the flow or use Log check.
     const lastLog = gameState?.logs?.[gameState.logs.length - 1];
 
-    // Log Resize Handlers
-    const handleMouseDown = (e: React.MouseEvent) => {
+    // Log Resize Handlers (Mouse + Touch)
+    const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
         setIsDraggingLogs(true);
         e.preventDefault();
     };
@@ -252,19 +274,33 @@ export default function GameBoard() {
         }
     }, [isDraggingLogs]);
 
+    const handleTouchMove = React.useCallback((e: TouchEvent) => {
+        if (!isDraggingLogs || !e.touches[0]) return;
+        const newHeight = window.innerHeight - e.touches[0].clientY;
+        if (newHeight > 100 && newHeight < 600) {
+            setLogHeight(newHeight);
+        }
+    }, [isDraggingLogs]);
+
     useEffect(() => {
         if (isDraggingLogs) {
             window.addEventListener('mouseup', handleMouseUp);
             window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('touchend', handleMouseUp);
+            window.addEventListener('touchmove', handleTouchMove);
         } else {
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('touchend', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
         }
         return () => {
             window.removeEventListener('mouseup', handleMouseUp);
             window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('touchend', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
         }
-    }, [isDraggingLogs, handleMouseUp, handleMouseMove]);
+    }, [isDraggingLogs, handleMouseUp, handleMouseMove, handleTouchMove]);
 
     // Dice Logic for UI
     const logicDice = gameState?.dice || [0, 0];
@@ -635,6 +671,7 @@ export default function GameBoard() {
                 {/* Resize Handle */}
                 <Box
                     onMouseDown={handleMouseDown}
+                    onTouchStart={handleMouseDown}
                     sx={{
                         height: 8,
                         width: '100%',
@@ -742,6 +779,13 @@ export default function GameBoard() {
                 open={diceModalOpen}
                 onClose={handleDiceModalClose}
                 dice={displayDice as [number, number]}
+            />
+
+            {/* Game Chat */}
+            <GameChat
+                messages={(gameState as any).chat_messages || []}
+                onSend={(message) => sendMessage('SEND_CHAT', { message })}
+                currentUserId={user.user_id}
             />
 
             {/* FABs */}
@@ -908,12 +952,12 @@ export default function GameBoard() {
                             // Don't show if must buy or draw first
                             if (mustBuy || mustDraw) return null;
 
-                            const hasPendingRent = !!(gameState as any).pending_rent;
-                            const isWaitingForRent = hasPendingRent && rentCountdown > 0;
-                            const isDisabled = isWaitingForRent || actionPending;
+                            const pendingRent = (gameState as any)?.pending_rent;
+                            const isBlockedByRent = pendingRent && pendingRent.target_id === user.user_id;
+                            const isDisabled = isBlockedByRent || actionPending;
 
                             return (
-                                <Tooltip title={isWaitingForRent ? `Espera ${rentCountdown}s` : "Terminar Turno"} placement="right">
+                                <Tooltip title={isBlockedByRent ? "Espera a que te cobren la renta" : "Terminar Turno"} placement="right">
                                     <Box sx={{
                                         width: 56,
                                         height: 56,
@@ -931,18 +975,18 @@ export default function GameBoard() {
                                         onClick={() => !isDisabled && sendAction('END_TURN', {})}
                                     >
                                         <Stop sx={{ color: 'white' }} />
-                                        {isWaitingForRent && (
+                                        {isBlockedByRent && (
                                             <Typography sx={{
                                                 position: 'absolute',
                                                 bottom: -8,
-                                                fontSize: 10,
+                                                fontSize: 14,
                                                 fontWeight: 'bold',
                                                 bgcolor: 'warning.main',
                                                 color: 'black',
                                                 px: 0.5,
                                                 borderRadius: 1
                                             }}>
-                                                {rentCountdown}s
+                                                💰
                                             </Typography>
                                         )}
                                     </Box>
