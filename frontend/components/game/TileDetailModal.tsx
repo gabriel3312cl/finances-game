@@ -33,7 +33,8 @@ export default function TileDetailModal({ tile, gameState, user, sendMessage, on
 
     const handleCharge = () => {
         if (!canCharge || !propertyId) return;
-        sendMessage('PAY_RENT', { property_id: propertyId, target_id: potentialVictim.user_id });
+        // Owner charges rent using COLLECT_RENT (no payload needed, reads from PendingRent)
+        sendMessage('COLLECT_RENT', {});
         onClose();
     };
 

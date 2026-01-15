@@ -86,7 +86,7 @@ export default function SoundManager() {
                     playSound('purchase');
                 } else if (msg.includes('ganó la subasta')) {
                     playSound('subasta_win');
-                } else if (msg.includes('bonus $500')) {
+                } else if (msg.includes('bonus $500') || msg.includes('dobles')) {
                     playSound('wow');
                 } else if (msg.includes('ganó') || msg.includes('recibió')) {
                     // Check if it's a card win or generic

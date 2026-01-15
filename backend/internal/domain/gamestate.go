@@ -80,6 +80,7 @@ type PlayerState struct {
 	Balance          int            `json:"balance"`
 	Position         int            `json:"position"` // 0-63 (assuming 17x17 board loop)
 	InJail           bool           `json:"in_jail"`
+	JailTurns        int            `json:"jail_turns"` // Number of turns spent in jail without rolling doubles
 	IsActive         bool           `json:"is_active"`
 	Loan             int            `json:"loan"`
 	Credit           *CreditProfile `json:"credit,omitempty"`

@@ -105,14 +105,17 @@ export default function GameBoard() {
     const animationIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const [botDialogOpen, setBotDialogOpen] = useState(false);
     const [selectedBotType, setSelectedBotType] = useState('balanced');
+    const [selectedBotColor, setSelectedBotColor] = useState('#9c27b0');
+    const [selectedBotShape, setSelectedBotShape] = useState('CUBE');
 
     // Lobby Visibility Management
-    const [lobbyOpen, setLobbyOpen] = useState(true);
+    const [lobbyOpen, setLobbyOpen] = useState(false);
+    const hasCheckedCustomization = useRef(false);
     const [isLLMOnline, setIsLLMOnline] = useState(true);
 
     useEffect(() => {
         // Check LLM Health on mount
-        fetch(`${API_URL}/advisor/health`)
+        fetch(`${API_URL}/api/advisor/health`)
             .then(res => res.json())
             .then(data => setIsLLMOnline(!!data.online))
             .catch(() => setIsLLMOnline(false));
@@ -122,8 +125,19 @@ export default function GameBoard() {
     useEffect(() => {
         if (gameState?.status !== 'WAITING') {
             setLobbyOpen(false);
+        } else if (!hasCheckedCustomization.current && gameState?.players) {
+            // Check if I have default customization
+            const me = gameState.players.find((p: any) => p.user_id === user?.user_id);
+            if (me) {
+                // If default (RED/CUBE), open modal to prompt customization
+                // Otherwise (already customized), keep closed
+                if (me.token_color === 'RED' && me.token_shape === 'CUBE') {
+                    setLobbyOpen(true);
+                }
+                hasCheckedCustomization.current = true;
+            }
         }
-    }, [gameState?.status]);
+    }, [gameState?.status, gameState?.players, user?.user_id]);
 
     // Animate token movement when dice modal closes
     const handleDiceModalClose = () => {
@@ -205,6 +219,13 @@ export default function GameBoard() {
     const prevDiceRef = useRef<string | null>(null);
     React.useLayoutEffect(() => {
         const currentDice = JSON.stringify(gameState?.dice);
+
+        // Initialize ref on first load without triggering modal
+        if (prevDiceRef.current === null) {
+            if (currentDice) prevDiceRef.current = currentDice;
+            return;
+        }
+
         if (currentDice && currentDice !== prevDiceRef.current && gameState?.dice && gameState.dice[0] > 0) {
             // Show modal when dice values change
             setDiceModalOpen(true);
@@ -689,6 +710,7 @@ export default function GameBoard() {
                             );
                         })}
                     </List>
+
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 1 }}>
                         <Button color="inherit" onClick={() => setBotDialogOpen(false)}>Cancelar</Button>
                         <Button variant="contained" color="secondary" onClick={() => {
@@ -726,10 +748,16 @@ export default function GameBoard() {
                             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <TextField
                                     label="Dinero Inicial"
-                                    type="number"
+                                    type="text"
                                     value={initialBalance}
-                                    onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
-                                    inputProps={{ min: 500, max: 10000, step: 100 }}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        setInitialBalance(val === '' ? '' : parseInt(val) as any);
+                                    }}
+                                    onBlur={() => {
+                                        const val = typeof initialBalance === 'number' ? initialBalance : parseInt(String(initialBalance)) || 1500;
+                                        setInitialBalance(Math.max(500, Math.min(10000, val)));
+                                    }}
                                     size="small"
                                     sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
                                 />
@@ -1198,11 +1226,17 @@ function translateLog(message: string): string {
 function getOwnerColor(gameState: any, propertyId: string) {
     const ownerId = gameState.property_ownership[propertyId];
     const owner = gameState.players.find((p: any) => p.user_id === ownerId);
+    if (!owner || !owner.token_color) return undefined;
+
+    // Check if it's already a hex code
+    if (owner.token_color.startsWith('#')) return owner.token_color;
+
     const colorMap: Record<string, string> = {
         'RED': '#ef4444', 'BLUE': '#3b82f6', 'GREEN': '#22c55e', 'YELLOW': '#eab308',
         'PURPLE': '#a855f7', 'ORANGE': '#f97316', 'CYAN': '#06b6d4', 'PINK': '#ec4899',
+        'GRAY': '#9ca3af'
     };
-    return owner?.token_color ? colorMap[owner.token_color] : undefined;
+    return colorMap[owner.token_color] || undefined;
 }
 
 function getLogColor(type: string) {

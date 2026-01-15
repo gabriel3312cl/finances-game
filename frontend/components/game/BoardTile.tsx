@@ -1,7 +1,7 @@
 import React from 'react';
 import { TileData, getGridPosition } from '@/config/boardData';
 import { Box, Typography } from '@mui/material';
-import { Train, Lightbulb, HelpOutline, Inventory2, House, Apartment } from '@mui/icons-material';
+import { Train, Lightbulb, HelpOutline, Inventory2, House, Apartment, ArrowForward, LocalParking, Lock, Gavel } from '@mui/icons-material';
 
 interface BoardTileProps {
     tile: TileData;
@@ -16,8 +16,20 @@ import PlayerToken from './PlayerToken';
 export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerColor, players, forceTopBar }: BoardTileProps & { ownerColor?: string }) {
     const { row, col } = getGridPosition(index);
     const isCorner = tile.type === 'CORNER' || tile.type === 'JAIL_VISIT' || tile.type === 'FREE_PARKING' || tile.type === 'GO_TO_JAIL';
-    // Base background color
-    let bgColor = isCorner ? '#cde6d0' : '#cee6d0';
+
+    // Determine which corner this is based on position (0=GO, 16=Jail, 32=FreeParking, 48=GoToJail)
+    const isGO = index === 0;
+    const isJailVisit = index === 16;
+    const isFreeParking = index === 32;
+    const isGoToJail = index === 48;
+
+    // Base background color - different for each corner
+    let bgColor = '#cee6d0';
+    if (isGO) bgColor = '#ffcdd2'; // Red tint for GO
+    else if (isJailVisit) bgColor = 'linear-gradient(135deg, #e8f5e9 50%, #ffcc80 50%)'; // Half green, half orange
+    else if (isFreeParking) bgColor = '#c8e6c9'; // Green for Free Parking
+    else if (isGoToJail) bgColor = '#ffccbc'; // Orange-red for Go To Jail
+    else if (isCorner) bgColor = '#cde6d0';
 
     // Apply Owner Tint if owned
     if (ownerColor) {
@@ -141,6 +153,12 @@ export default function BoardTile({ tile, index, onClick, fontScale = 1, ownerCo
             {tile.type === 'UTILITY' && <WatermarkIcon icon={<Lightbulb fontSize="large" />} />}
             {tile.type === 'CHANCE' && <WatermarkIcon icon={<HelpOutline fontSize="large" />} />}
             {tile.type === 'COMMUNITY' && <WatermarkIcon icon={<Inventory2 fontSize="large" />} />}
+
+            {/* Corner Icons */}
+            {isGO && <WatermarkIcon icon={<ArrowForward sx={{ fontSize: '3rem', color: '#d32f2f' }} />} />}
+            {isJailVisit && <WatermarkIcon icon={<Lock sx={{ fontSize: '2.5rem', color: '#ff9800' }} />} />}
+            {isFreeParking && <WatermarkIcon icon={<LocalParking sx={{ fontSize: '3rem', color: '#2e7d32' }} />} />}
+            {isGoToJail && <WatermarkIcon icon={<Gavel sx={{ fontSize: '2.5rem', color: '#d32f2f' }} />} />}
 
             {/* Housing Icons */}
             {(() => {
