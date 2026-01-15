@@ -45,15 +45,45 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
         lastMessageCountRef.current = messages.length;
     }, [messages.length, isOpen]);
 
-    // Clear unread when opened
+    // Clear unread when opened and scroll to bottom
     useEffect(() => {
-        if (isOpen) setUnreadCount(0);
+        if (isOpen) {
+            setUnreadCount(0);
+            // Delay scroll to ensure content is rendered
+            setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+            }, 50);
+        }
     }, [isOpen]);
 
-    // Auto-scroll
+    // Auto-scroll when new messages arrive
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        if (isOpen) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, isOpen]);
+
+    // Detect when someone mentions the current user with @
+    useEffect(() => {
+        if (messages.length === 0) return;
+        const lastMessage = messages[messages.length - 1];
+        // Check if it's a new message mentioning the current user
+        if (lastMessage.player_id !== currentUserId) {
+            const currentPlayer = players.find(p => p.user_id === currentUserId);
+            if (currentPlayer && lastMessage.message.includes(`@${currentPlayer.name}`)) {
+                // Open chat if closed and play notification sound
+                if (!isOpen) {
+                    setIsOpen(true);
+                }
+                // Play notification sound
+                try {
+                    const audio = new Audio('/sounds/notification.mp3');
+                    audio.volume = 0.5;
+                    audio.play().catch(() => { });
+                } catch { }
+            }
+        }
+    }, [messages.length, currentUserId, players, isOpen]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,12 +162,12 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
                 </Badge>
             </Box>
 
-            {/* Chat Panel - Fixed position, appears above the FAB area */}
+            {/* Chat Panel - Fixed position, appears above the FAB button */}
             {isOpen && (
                 <Paper sx={{
                     position: 'fixed',
-                    bottom: logHeight + 90,
-                    left: 24,
+                    bottom: logHeight + 100, // More space to not overlap FAB
+                    left: 90, // Move right to not overlap with FAB column
                     width: 340,
                     height: 450,
                     display: 'flex',

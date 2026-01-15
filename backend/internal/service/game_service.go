@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -2718,6 +2719,38 @@ func (s *GameService) handleSendChat(game *domain.GameState, userID string, payl
 	}
 
 	s.broadcastGameState(game)
+
+	// Check if any bot was mentioned with @ and respond
+	gameID := game.GameID
+	for _, p := range game.Players {
+		if p.IsBot && strings.Contains(req.Message, "@"+p.Name) {
+			bot := p
+			go func() {
+				time.Sleep(2 * time.Second) // Delay for "thinking"
+
+				s.mu.Lock()
+				defer s.mu.Unlock()
+
+				g, ok := s.games[gameID]
+				if !ok {
+					return
+				}
+
+				// Generate a contextual response
+				responses := []string{
+					"¡Hola! Estoy aquí para jugar, no para charlar. 🎲",
+					"Interesante... pero prefiero enfocarme en ganar. 💰",
+					"¿Quieres negociar? ¡Hablemos de propiedades! 🏠",
+					"Mmm, lo pensaré... pero ahora estoy concentrado en el juego.",
+					"¡Gracias por escribirme! Que gane el mejor. 🏆",
+				}
+				response := responses[time.Now().UnixNano()%int64(len(responses))]
+
+				s.addBotThought(g, bot, response)
+				s.broadcastGameState(g)
+			}()
+		}
+	}
 }
 
 // addBotThought adds a bot's reasoning to the chat for other players to see

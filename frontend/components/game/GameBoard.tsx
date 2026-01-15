@@ -206,6 +206,8 @@ export default function GameBoard() {
 
     // Auto-open property modal when someone lands on my property (pending_rent where I am creditor)
     const prevPendingRentRef = useRef<string | null>(null);
+    const [pendingPropertyTile, setPendingPropertyTile] = useState<TileData | null>(null);
+
     useEffect(() => {
         const pendingRent = (gameState as any)?.pending_rent;
         if (!pendingRent || !user?.user_id) {
@@ -218,20 +220,35 @@ export default function GameBoard() {
         if (pendingRent.creditor_id === user.user_id && rentKey !== prevPendingRentRef.current) {
             prevPendingRentRef.current = rentKey;
 
-            // Check if no other modals are open
-            const hasModalOpen = isInventoryOpen || isTradeOpen || diceModalOpen || selectedTile !== null;
-
-            if (!hasModalOpen) {
-                // Find the tile data for this property
-                const tile = boardTiles.find(t => t.propertyId === pendingRent.property_id);
-                if (tile) {
-                    // Auto-open the tile detail modal
-                    setSelectedTile(tile);
-                    playSoundEffect('notification'); // Alert sound
+            // Find the tile data for this property
+            const tile = boardTiles.find(t => t.propertyId === pendingRent.property_id);
+            if (tile) {
+                // If dice modal is open, save tile for later
+                if (diceModalOpen) {
+                    setPendingPropertyTile(tile);
+                } else {
+                    // Check if no other modals are open
+                    const hasModalOpen = isInventoryOpen || isTradeOpen || selectedTile !== null;
+                    if (!hasModalOpen) {
+                        setSelectedTile(tile);
+                        playSoundEffect('notification');
+                    }
                 }
             }
         }
     }, [(gameState as any)?.pending_rent?.property_id, (gameState as any)?.pending_rent?.target_id, user?.user_id, isInventoryOpen, isTradeOpen, diceModalOpen, selectedTile, boardTiles]);
+
+    // Open pending property tile when dice modal closes
+    useEffect(() => {
+        if (!diceModalOpen && pendingPropertyTile) {
+            const hasModalOpen = isInventoryOpen || isTradeOpen || selectedTile !== null;
+            if (!hasModalOpen) {
+                setSelectedTile(pendingPropertyTile);
+                playSoundEffect('notification');
+            }
+            setPendingPropertyTile(null);
+        }
+    }, [diceModalOpen, pendingPropertyTile, isInventoryOpen, isTradeOpen, selectedTile]);
 
     // Idempotent action sender - prevents double-clicks, with timeout fallback
     const sendAction = (action: string, payload: any = {}) => {
@@ -586,37 +603,50 @@ export default function GameBoard() {
                 </Box>
 
                 {/* ACTION PANEL (Bottom Overlay) */}
-                <Box sx={{ p: 2, bgcolor: '#1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, borderTop: 1, borderColor: 'grey.700' }}>
 
-                    {/* Action Buttons Logic */}
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {canStart && (
+                    <Box sx={{
+                        p: 2,
+                        bgcolor: '#1e293b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                        borderTop: 1,
+                        borderColor: 'grey.700'
+                    }}>
 
-                        {/* 0. Start Game (Host only, when WAITING and 2+ players) */}
-                        {canStart && (
-                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <TextField
-                                    label="Dinero Inicial"
-                                    type="number"
-                                    value={initialBalance}
-                                    onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
-                                    inputProps={{ min: 500, max: 10000, step: 100 }}
-                                    size="small"
-                                    sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
-                                />
-                                <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', { initial_balance: initialBalance })}>
-                                    INICIAR JUEGO
+                        {/* Action Buttons Logic */}
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+
+                            {/* 0. Start Game (Host only, when WAITING and 2+ players) */}
+                            {canStart && (
+                                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <TextField
+                                        label="Dinero Inicial"
+                                        type="number"
+                                        value={initialBalance}
+                                        onChange={(e) => setInitialBalance(Math.max(500, Math.min(10000, parseInt(e.target.value) || 1500)))}
+                                        inputProps={{ min: 500, max: 10000, step: 100 }}
+                                        size="small"
+                                        sx={{ width: 150, '& input': { color: 'white' }, '& label': { color: 'grey.400' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.600' } } }}
+                                    />
+                                    <Button variant="contained" color="primary" size="large" onClick={() => sendMessage('START_GAME', { initial_balance: initialBalance })}>
+                                        INICIAR JUEGO
+                                    </Button>
+                                </Box>
+                            )}
+
+                            {/* Add Bot Button (Host only, Waiting) */}
+                            {isHost && gameState?.status === 'WAITING' && (
+                                <Button variant="outlined" color="secondary" onClick={() => setBotDialogOpen(true)}>
+                                    AGREGAR BOT
                                 </Button>
-                            </Box>
-                        )}
-
-                        {/* Add Bot Button (Host only, Waiting) */}
-                        {isHost && gameState?.status === 'WAITING' && (
-                            <Button variant="outlined" color="secondary" onClick={() => setBotDialogOpen(true)}>
-                                AGREGAR BOT
-                            </Button>
-                        )}
+                            )}
+                        </Box>
                     </Box>
-                </Box>
+
+                )}
             </Box>
 
             {/* ADD BOT DIALOG */}
@@ -667,7 +697,17 @@ export default function GameBoard() {
             </Dialog>
 
             {/* LOG CONSOLE */}
-            <Paper sx={{ height: logHeight, width: '100%', bgcolor: 'black', borderTop: 1, borderColor: 'grey.800', display: 'flex', flexDirection: 'column', zIndex: 10, position: 'relative' }}>
+            <Paper sx={{
+                height: logHeight,
+                width: '100%',
+                bgcolor: 'black',
+                borderTop: 1,
+                borderColor: 'grey.800',
+                display: 'flex',
+                flexDirection: 'column',
+                zIndex: 10,
+                position: 'relative'
+            }}>
                 {/* Resize Handle */}
                 <Box
                     onMouseDown={handleMouseDown}
