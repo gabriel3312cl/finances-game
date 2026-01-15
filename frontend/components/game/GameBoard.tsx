@@ -697,6 +697,11 @@ export default function GameBoard() {
             </Dialog>
 
             {/* LOG CONSOLE */}
+            {/* LOG CONSOLE & CHAT PANEL */}
+            {/* SPACER for Fixed Bottom Panel */}
+            <Box sx={{ height: logHeight, width: '100%', flexShrink: 0 }} />
+
+            {/* LOG CONSOLE & CHAT PANEL */}
             <Paper sx={{
                 height: logHeight,
                 width: '100%',
@@ -705,8 +710,11 @@ export default function GameBoard() {
                 borderColor: 'grey.800',
                 display: 'flex',
                 flexDirection: 'column',
-                zIndex: 10,
-                position: 'relative'
+                zIndex: 100, // Higher z-index to stay above board elements
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0
             }}>
                 {/* Resize Handle */}
                 <Box
@@ -727,29 +735,48 @@ export default function GameBoard() {
                     <Box sx={{ width: 40, height: 3, bgcolor: 'grey.600', borderRadius: 2 }} />
                 </Box>
 
-                <Box sx={{ px: 2, py: 0.5, bgcolor: 'grey.900', borderBottom: 1, borderColor: 'grey.800', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <History fontSize="small" color="disabled" />
-                    <Typography variant="caption" color="grey.500" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Registro de Eventos</Typography>
+                <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                    {/* LEFT COLUMN: LOGS */}
+                    <Box sx={{ width: '50%', display: 'flex', flexDirection: 'column', borderRight: '1px solid', borderColor: 'grey.800' }}>
+                        <Box sx={{ px: 2, py: 0.5, bgcolor: 'grey.900', borderBottom: 1, borderColor: 'grey.800', display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <History fontSize="small" color="disabled" />
+                            <Typography variant="caption" color="grey.500" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Registro de Eventos</Typography>
+                        </Box>
+                        <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
+                            {[...(gameState.logs || [])].reverse().flatMap((log: any, i: number) => {
+                                const message = translateLog(log.message);
+                                if (!message || !message.trim()) return [];
+                                return [(
+                                    <ListItem key={i} sx={{ py: 0.5, px: 0, minHeight: 'auto', mb: 0.5, alignItems: 'flex-start' }}>
+                                        <ListItemText
+                                            primary={
+                                                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type), lineHeight: 1.5, display: 'block' }}>
+                                                    <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
+                                                    {translateLog(log.message)}
+                                                </Typography>
+                                            }
+                                        />
+                                    </ListItem>
+                                )];
+                            })}
+                        </List>
+                    </Box>
+
+                    {/* RIGHT COLUMN: CHAT */}
+                    <Box sx={{ width: '50%', display: 'flex', flexDirection: 'column', height: '100%' }}>
+                        <GameChat
+                            messages={(gameState as any).chat_messages || []}
+                            players={(gameState?.players || []).map((p: any) => ({
+                                user_id: p.user_id,
+                                name: p.name,
+                                token_color: p.token_color,
+                                is_bot: p.is_bot || false
+                            }))}
+                            onSend={(message) => sendMessage('SEND_CHAT', { message })}
+                            currentUserId={user.user_id}
+                        />
+                    </Box>
                 </Box>
-                <List dense sx={{ flex: 1, overflowY: 'auto', px: 2, py: 0, fontFamily: 'monospace', display: 'flex', flexDirection: 'column' }}>
-                    {[...(gameState.logs || [])].reverse().flatMap((log: any, i: number) => {
-                        const message = translateLog(log.message);
-                        if (!message || !message.trim()) return [];
-                        return [(
-                            <ListItem key={i} sx={{ py: 0, minHeight: 20 }}>
-                                <ListItemText
-                                    primary={
-                                        <Typography variant="caption" sx={{ fontFamily: 'monospace', color: getLogColor(log.type), lineHeight: 1.2 }}>
-                                            <span style={{ opacity: 0.5, marginRight: 8 }}>[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
-                                            {translateLog(log.message)}
-                                        </Typography>
-                                    }
-                                />
-                            </ListItem>
-                        )];
-                    })}
-                    {/* Auto-scroll removed since we are showing newest at top */}
-                </List>
             </Paper>
 
             {/* MODALS & DRAWERS */}
@@ -889,23 +916,7 @@ export default function GameBoard() {
             {/* LEFT FABs - Chat & Game Actions */}
             <Box sx={{ position: 'fixed', bottom: logHeight + 20, left: 24, zIndex: 60, transition: 'bottom 0.1s' }}>
                 <Stack direction="column" spacing={2}>
-                    {/* Game Chat - Always at the top */}
-                    <Tooltip title="Chat" placement="right">
-                        <Box>
-                            <GameChat
-                                messages={(gameState as any).chat_messages || []}
-                                players={(gameState?.players || []).map((p: any) => ({
-                                    user_id: p.user_id,
-                                    name: p.name,
-                                    token_color: p.token_color,
-                                    is_bot: p.is_bot || false
-                                }))}
-                                onSend={(message) => sendMessage('SEND_CHAT', { message })}
-                                currentUserId={user.user_id}
-                                logHeight={logHeight}
-                            />
-                        </Box>
-                    </Tooltip>
+
 
                     {/* Game Actions - Only on my turn */}
                     {isGameActive && isMyTurn && (

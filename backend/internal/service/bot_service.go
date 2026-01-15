@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -206,6 +207,64 @@ func (s *BotService) generateHeuristicDecision(game *domain.GameState, bot *doma
 		}
 	}
 
+	// 4. Trade Proposal - Try to initiate a trade with a human player occasionally
+	// Only do this if it's our turn and we have properties
+	if game.CurrentTurnID == bot.UserID && game.ActiveTrade == nil && rand.Float64() < 0.15 { // 15% chance each turn
+		// Find a property we want (part of a group we partially own)
+		wantedProps := []domain.Tile{}
+		myGroups := make(map[string]int)
+		groupSizes := make(map[string]int)
+
+		// Count my properties per group
+		for _, t := range game.Board {
+			if t.GroupIdentifier != "" {
+				groupSizes[t.GroupIdentifier]++
+				if t.OwnerID != nil && *t.OwnerID == bot.UserID {
+					myGroups[t.GroupIdentifier]++
+				}
+			}
+		}
+
+		// Find properties to complete a monopoly
+		for _, t := range game.Board {
+			if t.GroupIdentifier != "" && t.OwnerID != nil && *t.OwnerID != bot.UserID {
+				// If I own some of this group, I want the rest
+				if myGroups[t.GroupIdentifier] > 0 && myGroups[t.GroupIdentifier] < groupSizes[t.GroupIdentifier] {
+					wantedProps = append(wantedProps, t)
+				}
+			}
+		}
+
+		if len(wantedProps) > 0 {
+			// Pick a random wanted property
+			target := wantedProps[rand.Intn(len(wantedProps))]
+			targetOwnerID := *target.OwnerID
+
+			// Find a property to offer (from a group I don't care about)
+			for _, t := range game.Board {
+				if t.OwnerID != nil && *t.OwnerID == bot.UserID && !t.IsMortgaged {
+					// Offer a property I don't have full monopoly on
+					if myGroups[t.GroupIdentifier] < groupSizes[t.GroupIdentifier] {
+						// Create trade offer
+						cashOffer := 0
+						if bot.Balance > 200 {
+							cashOffer = rand.Intn(150) + 50 // Offer $50-200 extra
+						}
+
+						payload := fmt.Sprintf(`{"target_id":"%s","offer_properties":["%s"],"offer_cash":%d,"request_properties":["%s"],"request_cash":0}`,
+							targetOwnerID, t.PropertyID, cashOffer, target.PropertyID)
+
+						return &domain.BotAction{
+							Action:  "INITIATE_TRADE",
+							Payload: json.RawMessage(payload),
+							Reason:  fmt.Sprintf("Quiero completar mi monopolio de %s", target.GroupIdentifier),
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("no heuristic action found")
 }
 
@@ -340,4 +399,88 @@ func (s *BotService) callLLM(req LLMRequest) (string, error) {
 	}
 
 	return llmResp.Choices[0].Message.Content, nil
+}
+
+// GenerateChatResponse generates a contextual chat response with bot personality
+func (s *BotService) GenerateChatResponse(game *domain.GameState, bot *domain.PlayerState, playerMessage string, playerName string) (string, error) {
+	profile := domain.GetBotProfile(bot.BotPersonalityID)
+
+	// Build context about current game state
+	var gameContext strings.Builder
+	gameContext.WriteString(fmt.Sprintf("Mi nombre es '%s'. Mi saldo: $%d.\n", bot.Name, bot.Balance))
+	gameContext.WriteString(fmt.Sprintf("PERSONALIDAD: %s\n", profile.Description))
+	gameContext.WriteString(fmt.Sprintf("Tolerancia al riesgo: %.0f%%, Agresividad: %.0f%%, Habilidad de negociación: %.0f%%\n\n",
+		profile.RiskTolerance*100, profile.Aggression*100, profile.NegotiationSkill*100))
+
+	// Count my properties
+	myProps := 0
+	for _, ownerID := range game.PropertyOwnership {
+		if ownerID == bot.UserID {
+			myProps++
+		}
+	}
+	gameContext.WriteString(fmt.Sprintf("Tengo %d propiedades.\n", myProps))
+
+	// Info about other players
+	gameContext.WriteString("\nOtros jugadores:\n")
+	for _, p := range game.Players {
+		if p.UserID != bot.UserID {
+			props := 0
+			for _, ownerID := range game.PropertyOwnership {
+				if ownerID == p.UserID {
+					props++
+				}
+			}
+			botLabel := ""
+			if p.IsBot {
+				botLabel = " (BOT)"
+			}
+			gameContext.WriteString(fmt.Sprintf("- %s%s: $%d, %d propiedades\n", p.Name, botLabel, p.Balance, props))
+		}
+	}
+
+	// Build the prompt
+	systemPrompt := fmt.Sprintf(`Eres un bot de IA jugando Monopoly llamado "%s".
+%s
+
+INSTRUCCIONES:
+- Responde en español, con tu personalidad única
+- Sé breve (1-2 oraciones máximo)
+- Puedes hablar sobre estrategia, proponer tratos, bromear, o comentar el juego
+- Si te preguntan cuánto dinero tienes, puedes responder honestamente o mentir según tu personalidad
+- Si quieren negociar, puedes mostrar interés o rechazar según te convenga
+- NO uses formato JSON, solo texto natural
+- Añade uno o dos emojis relevantes
+
+CONTEXTO ACTUAL:
+%s`, bot.Name, profile.Description, gameContext.String())
+
+	userPrompt := fmt.Sprintf("El jugador '%s' te envió este mensaje: \"%s\"\n\nResponde brevemente y con personalidad:",
+		playerName, playerMessage)
+
+	messages := []ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	llmReq := LLMRequest{
+		Model:       "local-model",
+		Messages:    messages,
+		Temperature: 0.9, // Higher for more creative responses
+		MaxTokens:   150,
+		Stream:      false,
+	}
+
+	response, err := s.callLLM(llmReq)
+	if err != nil {
+		// Fallback to generic response on error
+		fallbacks := []string{
+			"🎲 ¡Interesante! Pero ahora estoy concentrado en ganar...",
+			"💰 Mmm, lo pensaré... ¿tienes algo que ofrecer?",
+			"🏠 ¡Hablemos de propiedades! ¿Qué tienes en mente?",
+		}
+		return fallbacks[len(playerMessage)%len(fallbacks)], nil
+	}
+
+	return strings.TrimSpace(response), nil
 }

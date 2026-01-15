@@ -1159,7 +1159,9 @@ func (s *GameService) handleAcceptTrade(game *domain.GameState, userID string, p
 		}
 	}
 
-	game.LastAction = "Intercambio aceptado entre " + trade.OffererName + " y " + trade.TargetName
+	msg := "Intercambio realizado entre " + trade.OffererName + " y " + trade.TargetName
+	game.LastAction = msg
+	s.addLog(game, msg, "SUCCESS")
 	game.ActiveTrade = nil
 	s.broadcastGameState(game)
 }
@@ -1173,7 +1175,16 @@ func (s *GameService) handleRejectTrade(game *domain.GameState, userID string, p
 		return
 	}
 
-	game.LastAction = "Intercambio cancelado/rechazado"
+	actorName := "Jugador"
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			actorName = p.Name
+			break
+		}
+	}
+	msg := actorName + " rechazó/canceló el intercambio"
+	game.LastAction = msg
+	s.addLog(game, msg, "ALERT")
 	game.ActiveTrade = nil
 	s.broadcastGameState(game)
 }
@@ -2722,11 +2733,49 @@ func (s *GameService) handleSendChat(game *domain.GameState, userID string, payl
 
 	// Check if any bot was mentioned with @ and respond
 	gameID := game.GameID
+	senderName := player.Name
+	now := time.Now().Unix()
 	for _, p := range game.Players {
-		if p.IsBot && strings.Contains(req.Message, "@"+p.Name) {
+		if !p.IsBot {
+			continue
+		}
+		isMentioned := strings.Contains(req.Message, "@"+p.Name)
+		isRepliedTo := strings.Contains(req.Message, "[Respuesta a "+p.Name+"]")
+
+		if isMentioned || isRepliedTo {
+			// Check cooldown: bot can only respond every 30 seconds
+			if now-p.LastBotChatTime < 30 {
+				continue // Skip this bot, still in cooldown
+			}
 			bot := p
+			bot.LastBotChatTime = now // Update cooldown
+
 			go func() {
 				time.Sleep(2 * time.Second) // Delay for "thinking"
+
+				// Generate response using LLM with personality (outside lock)
+				var response string
+				if s.botService != nil {
+					s.mu.RLock()
+					g, ok := s.games[gameID]
+					s.mu.RUnlock()
+					if ok {
+						resp, err := s.botService.GenerateChatResponse(g, bot, req.Message, senderName)
+						if err == nil {
+							response = resp
+						}
+					}
+				}
+
+				// Fallback if LLM failed
+				if response == "" {
+					responses := []string{
+						"🎲 ¡Interesante! Pero ahora estoy concentrado en ganar...",
+						"💰 Mmm, lo pensaré... ¿tienes algo que ofrecer?",
+						"🏠 ¡Hablemos de propiedades! ¿Qué tienes en mente?",
+					}
+					response = responses[time.Now().UnixNano()%int64(len(responses))]
+				}
 
 				s.mu.Lock()
 				defer s.mu.Unlock()
@@ -2735,16 +2784,6 @@ func (s *GameService) handleSendChat(game *domain.GameState, userID string, payl
 				if !ok {
 					return
 				}
-
-				// Generate a contextual response
-				responses := []string{
-					"¡Hola! Estoy aquí para jugar, no para charlar. 🎲",
-					"Interesante... pero prefiero enfocarme en ganar. 💰",
-					"¿Quieres negociar? ¡Hablemos de propiedades! 🏠",
-					"Mmm, lo pensaré... pero ahora estoy concentrado en el juego.",
-					"¡Gracias por escribirme! Que gane el mejor. 🏆",
-				}
-				response := responses[time.Now().UnixNano()%int64(len(responses))]
 
 				s.addBotThought(g, bot, response)
 				s.broadcastGameState(g)

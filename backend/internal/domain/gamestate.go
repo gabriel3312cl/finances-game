@@ -87,6 +87,9 @@ type PlayerState struct {
 	IsBot            bool           `json:"is_bot"`
 	BotPersonalityID string         `json:"bot_personality_id,omitempty"`
 	TokenShape       string         `json:"token_shape"` // CUBE, PYRAMID, CYLINDER, STAR, etc.
+	// Bot cooldowns (not serialized to frontend)
+	LastBotChatTime  int64 `json:"-"` // Unix timestamp of last chat message
+	LastBotTradeTime int64 `json:"-"` // Unix timestamp of last trade proposal
 }
 
 // CreditProfile tracks a player's credit history for dynamic interest rates

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Paper, Typography, TextField, IconButton, Badge, Chip, Tooltip } from '@mui/material';
+import { Box, Paper, Typography, TextField, IconButton, Badge, Chip, Tooltip, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
 import { Chat, Send, SmartToy, Person, SwapHoriz, Reply } from '@mui/icons-material';
 
 interface ChatMessage {
@@ -28,62 +28,19 @@ interface GameChatProps {
     logHeight: number; // To position above the log console
 }
 
-export default function GameChat({ messages, players, onSend, currentUserId, logHeight }: GameChatProps) {
-    const [isOpen, setIsOpen] = useState(false);
+export default function GameChat({ messages, players, onSend, currentUserId }: Omit<GameChatProps, 'logHeight'>) {
     const [inputValue, setInputValue] = useState('');
-    const [unreadCount, setUnreadCount] = useState(0);
     const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+    const [mentionAnchorEl, setMentionAnchorEl] = useState<null | HTMLElement>(null);
+    const [mentionSearch, setMentionSearch] = useState('');
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const lastMessageCountRef = useRef(0);
     const inputRef = useRef<HTMLInputElement>(null);
-
-    // Track unread messages
-    useEffect(() => {
-        if (!isOpen && messages.length > lastMessageCountRef.current) {
-            setUnreadCount(prev => prev + (messages.length - lastMessageCountRef.current));
-        }
-        lastMessageCountRef.current = messages.length;
-    }, [messages.length, isOpen]);
-
-    // Clear unread when opened and scroll to bottom
-    useEffect(() => {
-        if (isOpen) {
-            setUnreadCount(0);
-            // Delay scroll to ensure content is rendered
-            setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-            }, 50);
-        }
-    }, [isOpen]);
 
     // Auto-scroll when new messages arrive
     useEffect(() => {
-        if (isOpen) {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [messages, isOpen]);
-
-    // Detect when someone mentions the current user with @
-    useEffect(() => {
-        if (messages.length === 0) return;
-        const lastMessage = messages[messages.length - 1];
-        // Check if it's a new message mentioning the current user
-        if (lastMessage.player_id !== currentUserId) {
-            const currentPlayer = players.find(p => p.user_id === currentUserId);
-            if (currentPlayer && lastMessage.message.includes(`@${currentPlayer.name}`)) {
-                // Open chat if closed and play notification sound
-                if (!isOpen) {
-                    setIsOpen(true);
-                }
-                // Play notification sound
-                try {
-                    const audio = new Audio('/sounds/notification.mp3');
-                    audio.volume = 0.5;
-                    audio.play().catch(() => { });
-                } catch { }
-            }
-        }
-    }, [messages.length, currentUserId, players, isOpen]);
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -97,8 +54,31 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
         }
     };
 
-    const handleMention = (player: Player) => {
-        setInputValue(prev => prev + `@${player.name} `);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setInputValue(val);
+
+        // Simple mention detection: Check if last word starts with @
+        const words = val.split(' ');
+        const lastWord = words[words.length - 1];
+        if (lastWord.startsWith('@')) {
+            setMentionSearch(lastWord.substring(1));
+            // Set anchor to input if not already open
+            if (!mentionAnchorEl) {
+                setMentionAnchorEl(inputRef.current);
+            }
+        } else {
+            setMentionAnchorEl(null);
+        }
+    };
+
+    const handleMentionSelect = (player: Player) => {
+        // Replace last @word with @PlayerName
+        const words = inputValue.split(' ');
+        words.pop(); // Remove partial mention
+        const newValue = [...words, `@${player.name} `].join(' ');
+        setInputValue(newValue);
+        setMentionAnchorEl(null);
         inputRef.current?.focus();
     };
 
@@ -117,7 +97,7 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
         const base = {
             p: 1,
             borderRadius: 2,
-            maxWidth: '85%',
+            maxWidth: '90%',
         };
         if (type === 'BOT_THOUGHT') {
             return { ...base, bgcolor: 'rgba(33, 150, 243, 0.1)', border: '1px dashed rgba(33, 150, 243, 0.3)' };
@@ -139,160 +119,141 @@ export default function GameChat({ messages, players, onSend, currentUserId, log
     const otherPlayers = players.filter(p => p.user_id !== currentUserId);
 
     return (
-        <>
-            {/* Chat FAB - Same style as right-side FABs */}
-            <Box
-                onClick={() => setIsOpen(!isOpen)}
-                sx={{
-                    width: 56,
-                    height: 56,
-                    bgcolor: isOpen ? '#1e40af' : '#334155',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: 6,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { transform: 'scale(1.1)' }
-                }}
-            >
-                <Badge badgeContent={unreadCount} color="error">
-                    <Chat sx={{ color: isOpen ? 'white' : 'primary.main' }} />
-                </Badge>
+        <Box sx={{
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            bgcolor: '#1e293b',
+            overflow: 'hidden'
+        }}>
+            {/* Header */}
+            <Box sx={{ p: 1, bgcolor: 'grey.900', borderBottom: '1px solid', borderColor: 'grey.800', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle2" color="white" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chat fontSize="small" /> Chat del Juego
+                </Typography>
             </Box>
 
-            {/* Chat Panel - Fixed position, appears above the FAB button */}
-            {isOpen && (
-                <Paper sx={{
-                    position: 'fixed',
-                    bottom: logHeight + 100, // More space to not overlap FAB
-                    left: 90, // Move right to not overlap with FAB column
-                    width: 340,
-                    height: 450,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    bgcolor: '#1e293b',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 2,
-                    zIndex: 100,
-                    overflow: 'hidden',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
-                }}>
-                    {/* Header */}
-                    <Box sx={{ p: 1.5, bgcolor: 'grey.900', borderBottom: '1px solid', borderColor: 'grey.800' }}>
-                        <Typography variant="subtitle2" color="white">💬 Chat del Juego</Typography>
-                    </Box>
-
-                    {/* Player Mention Bar */}
-                    <Box sx={{
-                        px: 1,
-                        py: 0.5,
-                        bgcolor: 'rgba(0,0,0,0.2)',
-                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        display: 'flex',
-                        gap: 0.5,
-                        flexWrap: 'wrap',
-                        alignItems: 'center'
-                    }}>
-                        <Typography variant="caption" color="grey.500" sx={{ mr: 0.5 }}>@</Typography>
-                        {otherPlayers.map(player => (
-                            <Chip
-                                key={player.user_id}
-                                label={player.name}
-                                size="small"
-                                icon={player.is_bot ? <SmartToy sx={{ fontSize: 12 }} /> : undefined}
-                                onClick={() => handleMention(player)}
-                                sx={{
-                                    height: 22,
-                                    fontSize: '0.7rem',
-                                    bgcolor: player.token_color,
-                                    color: 'white',
-                                    cursor: 'pointer',
-                                    '&:hover': { filter: 'brightness(1.2)' }
-                                }}
-                            />
-                        ))}
-                    </Box>
-
-                    {/* Messages */}
-                    <Box sx={{ flex: 1, overflowY: 'auto', p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {messages.length === 0 && (
-                            <Typography variant="caption" color="grey.500" sx={{ textAlign: 'center', mt: 2 }}>
-                                Sin mensajes aún. ¡Menciona a un jugador con @ para iniciar!
-                            </Typography>
-                        )}
-                        {messages.map((msg) => {
-                            const isOwn = msg.player_id === currentUserId;
-                            const isBot = isPlayerBot(msg.player_id);
-                            return (
-                                <Box key={msg.id} sx={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-                                        {getMessageIcon(msg.type, isBot)}
-                                        <Typography variant="caption" color="grey.500">{msg.player_name}</Typography>
-                                        {!isOwn && (
-                                            <Tooltip title="Responder">
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={() => handleReply(msg)}
-                                                    sx={{ p: 0, ml: 0.5 }}
-                                                >
-                                                    <Reply sx={{ fontSize: 12, color: 'grey.600' }} />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                    </Box>
-                                    <Box sx={getMessageStyle(msg.type, isOwn)}>
-                                        <Typography variant="body2" color="white" sx={{ wordBreak: 'break-word' }}>
-                                            {msg.message}
-                                        </Typography>
-                                    </Box>
-                                </Box>
-                            );
-                        })}
-                        <div ref={messagesEndRef} />
-                    </Box>
-
-                    {/* Reply indicator */}
-                    {replyingTo && (
-                        <Box sx={{
-                            px: 1.5,
-                            py: 0.5,
-                            bgcolor: 'rgba(59, 130, 246, 0.1)',
-                            borderTop: '1px solid rgba(59, 130, 246, 0.3)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                        }}>
-                            <Typography variant="caption" color="info.main">
-                                ↩ Respondiendo a {replyingTo.player_name}
-                            </Typography>
-                            <IconButton size="small" onClick={() => setReplyingTo(null)} sx={{ p: 0 }}>
-                                <Typography color="grey.500" sx={{ fontSize: 12 }}>✕</Typography>
-                            </IconButton>
+            {/* Messages */}
+            <Box sx={{ flex: 1, overflowY: 'auto', p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {messages.length === 0 && (
+                    <Typography variant="caption" color="grey.500" sx={{ textAlign: 'center', mt: 2 }}>
+                        Sin mensajes aún. ¡Menciona a un jugador con @ para iniciar!
+                    </Typography>
+                )}
+                {messages.map((msg) => {
+                    const isOwn = msg.player_id === currentUserId;
+                    const isBot = isPlayerBot(msg.player_id);
+                    return (
+                        <Box key={msg.id} sx={{ display: 'flex', flexDirection: 'column', alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+                                {getMessageIcon(msg.type, isBot)}
+                                <Typography variant="caption" color="grey.500">{msg.player_name}</Typography>
+                                {!isOwn && (
+                                    <Tooltip title="Responder">
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => handleReply(msg)}
+                                            sx={{ p: 0, ml: 0.5 }}
+                                        >
+                                            <Reply sx={{ fontSize: 12, color: 'grey.600' }} />
+                                        </IconButton>
+                                    </Tooltip>
+                                )}
+                            </Box>
+                            <Box sx={getMessageStyle(msg.type, isOwn)}>
+                                <Typography variant="body2" color="white" sx={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                    {msg.message}
+                                </Typography>
+                            </Box>
                         </Box>
-                    )}
+                    );
+                })}
+                <div ref={messagesEndRef} />
+            </Box>
 
-                    {/* Input */}
-                    <Box component="form" onSubmit={handleSubmit} sx={{ p: 1, borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 1 }}>
-                        <TextField
-                            inputRef={inputRef}
-                            fullWidth
-                            size="small"
-                            placeholder="Escribe un mensaje..."
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            sx={{
-                                '& input': { color: 'white' },
-                                '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'grey.700' } }
-                            }}
-                        />
-                        <IconButton type="submit" color="primary" disabled={!inputValue.trim()}>
-                            <Send />
-                        </IconButton>
-                    </Box>
-                </Paper>
+            {/* Reply indicator */}
+            {replyingTo && (
+                <Box sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    bgcolor: 'rgba(59, 130, 246, 0.1)',
+                    borderTop: '1px solid rgba(59, 130, 246, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                }}>
+                    <Typography variant="caption" color="info.main">
+                        ↩ Respondiendo a {replyingTo.player_name}
+                    </Typography>
+                    <IconButton size="small" onClick={() => setReplyingTo(null)}>
+                        <Typography variant="caption" color="error">✕</Typography>
+                    </IconButton>
+                </Box>
             )}
-        </>
+
+            {/* Input Area */}
+            <Box component="form" onSubmit={handleSubmit} sx={{
+                p: 1.5,
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderTop: '1px solid rgba(255,255,255,0.05)',
+                flexShrink: 0
+            }}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        placeholder="Escribe un mensaje... (@ para mencionar)"
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        inputRef={inputRef}
+                        sx={{
+                            '& .MuiOutlinedInput-root': {
+                                bgcolor: 'rgba(0,0,0,0.3)',
+                                color: 'white',
+                                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                            }
+                        }}
+                    />
+                    <IconButton
+                        type="submit"
+                        color="primary"
+                        disabled={!inputValue.trim()}
+                        sx={{ bgcolor: 'rgba(37, 99, 235, 0.1)', '&:hover': { bgcolor: 'rgba(37, 99, 235, 0.2)' } }}
+                    >
+                        <Send fontSize="small" />
+                    </IconButton>
+                </Box>
+
+                {/* Mention Menu */}
+                <Menu
+                    anchorEl={mentionAnchorEl}
+                    open={Boolean(mentionAnchorEl)}
+                    onClose={() => setMentionAnchorEl(null)}
+                    anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+                    transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                    PaperProps={{
+                        sx: { bgcolor: 'rgba(30, 41, 59, 0.95)', border: '1px solid #334155', color: 'white' }
+                    }}
+                >
+                    {otherPlayers
+                        .filter(p => p.name.toLowerCase().includes(mentionSearch.toLowerCase()))
+                        .map(player => (
+                            <MenuItem key={player.user_id} onClick={() => handleMentionSelect(player)} dense>
+                                <ListItemIcon>
+                                    {player.is_bot ? <SmartToy fontSize="small" sx={{ color: 'info.main' }} /> : <Person fontSize="small" sx={{ color: player.token_color }} />}
+                                </ListItemIcon>
+                                <ListItemText primary={player.name} />
+                            </MenuItem>
+                        ))}
+                    {otherPlayers.filter(p => p.name.toLowerCase().includes(mentionSearch.toLowerCase())).length === 0 && (
+                        <MenuItem disabled>
+                            <ListItemText primary="No se encontraron jugadores" />
+                        </MenuItem>
+                    )}
+                </Menu>
+            </Box>
+        </Box>
     );
 }
