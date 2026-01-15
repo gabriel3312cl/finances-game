@@ -13,6 +13,7 @@ interface Game {
     game_id: string;
     players: any[];
     status: string;
+    host_id?: string;
 }
 
 export default function DashboardPage() {
@@ -207,10 +208,36 @@ export default function DashboardPage() {
                                                     Jugadores: {game.players?.length || 0}
                                                 </Typography>
                                             </CardContent>
-                                            <CardActions>
+                                            <CardActions sx={{ justifyContent: 'space-between' }}>
                                                 <Button size="small" onClick={() => router.push(`/game/${game.game_id}`)}>
                                                     Continuar
                                                 </Button>
+                                                {user?.user_id === game.host_id && (
+                                                    <IconButton
+                                                        color="error"
+                                                        size="small"
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (!confirm('¿Seguro que quieres eliminar esta partida? Se perderá todo el progreso.')) return;
+                                                            try {
+                                                                const res = await fetchWithAuth(`/games/delete?id=${game.game_id}`, { method: 'POST' }); // Using POST or DELETE depending on router/proxy issues, but backend expects DELETE? Main.go says DELETE handler? No wait, standard `mux` doesn't enforce method if I don't check it.
+                                                                // Actually backend handler CHECKS: if r.Method != "DELETE"
+                                                                // So I MUST use DELETE
+                                                                const resDel = await fetchWithAuth(`/games/delete?id=${game.game_id}`, { method: 'DELETE' });
+                                                                if (resDel.ok) {
+                                                                    setMyGames(prev => prev.filter(g => g.game_id !== game.game_id));
+                                                                } else {
+                                                                    const err = await resDel.json();
+                                                                    alert(err.message || 'Error al eliminar');
+                                                                }
+                                                            } catch (err) {
+                                                                alert('Error de conexión');
+                                                            }
+                                                        }}
+                                                    >
+                                                        <DeleteForever />
+                                                    </IconButton>
+                                                )}
                                             </CardActions>
                                         </Card>
                                     </Box>

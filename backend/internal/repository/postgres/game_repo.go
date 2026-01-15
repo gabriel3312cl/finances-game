@@ -31,13 +31,13 @@ func (r *GameRepository) Save(game *domain.GameState) error {
 		return err
 	}
 	query := `
-	INSERT INTO games (id, state, active, updated_at)
-	VALUES ($1, $2, $3, $4)
+	INSERT INTO games (id, state, active, updated_at, host_id)
+	VALUES ($1, $2, $3, $4, $5)
 	ON CONFLICT (id) DO UPDATE
-	SET state = $2, active = $3, updated_at = $4;
+	SET state = $2, active = $3, updated_at = $4, host_id = $5;
 	`
 	isActive := game.Status != "FINISHED"
-	if _, err := tx.Exec(query, game.GameID, stateJSON, isActive, time.Now()); err != nil {
+	if _, err := tx.Exec(query, game.GameID, stateJSON, isActive, time.Now(), game.HostID); err != nil {
 		return err
 	}
 
@@ -135,7 +135,7 @@ func (r *GameRepository) SaveLog(gameID string, logEntry domain.EventLog) error 
 }
 
 func (r *GameRepository) LoadActive() ([]*domain.GameState, error) {
-	query := `SELECT state FROM games WHERE active = TRUE`
+	query := `SELECT state, host_id FROM games WHERE active = TRUE`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -145,7 +145,8 @@ func (r *GameRepository) LoadActive() ([]*domain.GameState, error) {
 	var games []*domain.GameState
 	for rows.Next() {
 		var stateJSON []byte
-		if err := rows.Scan(&stateJSON); err != nil {
+		var hostID sql.NullString
+		if err := rows.Scan(&stateJSON, &hostID); err != nil {
 			log.Printf("Error scanning game state: %v", err)
 			continue
 		}
@@ -154,6 +155,14 @@ func (r *GameRepository) LoadActive() ([]*domain.GameState, error) {
 		if err := json.Unmarshal(stateJSON, &game); err != nil {
 			log.Printf("Error unmarshaling game state: %v", err)
 			continue
+		}
+		// Ensure HostID is set from DB column if missing in JSON (legacy support)
+		if hostID.Valid && game.HostID == "" {
+			game.HostID = hostID.String
+		}
+		// Fallback: If still empty (legacy games with null column), use first player
+		if game.HostID == "" && len(game.Players) > 0 {
+			game.HostID = game.Players[0].UserID
 		}
 		games = append(games, &game)
 	}
@@ -189,4 +198,12 @@ func (r *GameRepository) LoadBoardLayout() (map[int]struct {
 		}{t, pid}
 	}
 	return layout, nil
+}
+
+// Delete permanently removes a game and its associated data
+func (r *GameRepository) Delete(gameID string) error {
+	// Cascading delete handled by DB schema
+	query := `DELETE FROM games WHERE id = $1`
+	_, err := r.db.Exec(query, gameID)
+	return err
 }

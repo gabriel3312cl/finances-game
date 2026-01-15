@@ -10,6 +10,7 @@ import { AttachMoney, ExitToApp } from '@mui/icons-material';
 import PlayerToken from '@/components/game/PlayerToken';
 import Link from 'next/link';
 import { IconButton, Tooltip } from '@mui/material';
+import SoundManager from '@/components/game/SoundManager';
 
 interface GamePageProps {
     params: Promise<{ id: string }>
@@ -135,8 +136,9 @@ function GameWrapper({ gameId }: { gameId: string }) {
                 </Toolbar>
             </AppBar>
 
-            {/* Main View */}
+
             <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                <SoundManager />
                 <GameBoard />
             </Box>
         </Box>

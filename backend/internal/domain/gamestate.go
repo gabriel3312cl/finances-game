@@ -3,6 +3,7 @@ package domain
 type GameState struct {
 	GameID            string            `json:"game_id"`
 	Players           []*PlayerState    `json:"players"`
+	HostID            string            `json:"host_id"` // Tracks the creator of the game
 	Board             []Tile            `json:"board"`
 	CurrentTurnID     string            `json:"current_turn_id"` // UserID
 	Status            string            `json:"status"`          // WAITING, ROLLING_ORDER, ACTIVE, FINISHED

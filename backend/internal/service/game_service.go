@@ -227,6 +227,7 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 		PropertyOwnership: make(map[string]string),
 		TileVisits:        make(map[int]int),
 		CurrentTurnID:     host.ID,
+		HostID:            host.ID,
 		Logs:              []domain.EventLog{},
 		TurnOrder:         []string{},
 	}
@@ -243,6 +244,32 @@ func (s *GameService) CreateGame(host *domain.User) (*domain.GameState, error) {
 	s.games[code] = game
 	s.saveGame(game) // Save
 	return game, nil
+}
+
+func (s *GameService) DeleteGame(gameID string, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	game, ok := s.games[gameID]
+	if !ok {
+		return errors.New("game not found")
+	}
+
+	if game.HostID != userID {
+		return errors.New("unauthorized: only host can delete game")
+	}
+
+	// Delete from DB
+	if err := s.gameRepo.Delete(gameID); err != nil {
+		return fmt.Errorf("failed to delete game: %v", err)
+	}
+
+	// Delete from memory
+	delete(s.games, gameID)
+	// Optionally close websockets? handleEndGame cleans up usually.
+	// For now, simple deletion. The frontend will disconnect if game is gone.
+
+	return nil
 }
 
 func (s *GameService) loadPropertiesAndLayout() {

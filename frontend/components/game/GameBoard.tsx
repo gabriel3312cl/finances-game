@@ -15,6 +15,7 @@ import TileDetailModal from './TileDetailModal';
 import AdvisorChat from './AdvisorChat';
 import DiceModal from './DiceModal';
 import LobbyCustomization from './LobbyCustomization';
+import { playSoundEffect } from './SoundManager';
 import { getToken, API_URL } from '@/lib/auth';
 import { Box, Paper, Typography, Button, IconButton, Tooltip, Dialog, DialogContent, DialogTitle, List, ListItem, ListItemButton, ListItemText, Popover, Slider, Stack, TextField } from '@mui/material';
 import { LocalFireDepartment, Wallet, Casino, PlayArrow, CheckCircle, History, Settings as SettingsIcon, ZoomIn, ZoomOut, Handshake, Layers, Palette, Person, Psychology, Stop, Style } from '@mui/icons-material';
@@ -139,6 +140,9 @@ export default function GameBoard() {
         // Step through each position with 150ms delay
         animationIntervalRef.current = setInterval(() => {
             currentPos = (currentPos + 1) % 64;
+            // Play Step Sound
+            playSoundEffect('tap');
+
             setAnimatedPositions(prev => ({ ...prev, [currentPlayer.user_id]: currentPos }));
 
             // Stop when we reach final position
@@ -202,6 +206,7 @@ export default function GameBoard() {
         if (currentDice && currentDice !== prevDiceRef.current && gameState?.dice && gameState.dice[0] > 0) {
             // Show modal when dice values change
             setDiceModalOpen(true);
+            playSoundEffect('dice');
         }
         prevDiceRef.current = currentDice;
     }, [gameState?.dice]);

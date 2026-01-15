@@ -81,6 +81,7 @@ func main() {
 	gameHandler := handler.NewGameHandler(gameService)
 	mux.HandleFunc("/games/create", handler.AuthMiddleware(userRepo, gameHandler.CreateGame))
 	mux.HandleFunc("/games/join", handler.AuthMiddleware(userRepo, gameHandler.JoinGame))
+	mux.HandleFunc("/games/delete", handler.AuthMiddleware(userRepo, gameHandler.DeleteGame)) // Query param: ?id=...
 	mux.HandleFunc("/games/my", handler.AuthMiddleware(userRepo, gameHandler.GetMyGames))
 	mux.HandleFunc("/games/board", gameHandler.GetBoard) // public, or auth? Game board is generic. Public is fine.
 

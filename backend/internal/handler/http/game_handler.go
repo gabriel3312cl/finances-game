@@ -12,6 +12,39 @@ type GameHandler struct {
 	gameService *service.GameService
 }
 
+func (h *GameHandler) DeleteGame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "DELETE" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameID := r.URL.Query().Get("id")
+	if gameID == "" {
+		http.Error(w, "Missing game ID", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		http.Error(w, "Unauthorized: No UserID", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.gameService.DeleteGame(gameID, userID); err != nil {
+		if err.Error() == "unauthorized: only host can delete game" {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Game deleted successfully",
+	})
+}
+
 func NewGameHandler(gameService *service.GameService) *GameHandler {
 	return &GameHandler{
 		gameService: gameService,
